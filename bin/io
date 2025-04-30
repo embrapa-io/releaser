@@ -13,7 +13,7 @@ if [ ! -d "/data" ]; then
   echo ""
 
   echo "Critical! You need to mount volume data! Correct command to use this image is:"
-  echo "docker run --name releaser -v $$(pwd):/data -d releaser"
+  echo "docker run --name releaser -v $$(pwd):/data -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped -d embrapa/releaser"
 
   exit 1
 fi

@@ -95,7 +95,23 @@ class GitLab
 
     public function reposTags ($id)
     {
-        return $this->client->tags ()->all ($id);
+        $tags = [];
+
+        $page = 1;
+
+        do
+        {
+            $result = $this->client->tags ()->all ($id, [
+                'order_by' => 'updated',
+                'sort' => 'desc',
+                'per_page' => 100,
+                'page' => $page++
+            ]);
+
+            foreach ($result as $trash => $tag) $tags [$tag ['name']] = $tag;
+        } while (count ($result) > 0);
+
+        return $tags;
     }
 
     public function commitRefs ($id, $sha)

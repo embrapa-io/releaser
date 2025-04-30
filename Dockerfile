@@ -1,4 +1,4 @@
-FROM php:cli-alpine AS base
+FROM php:8.3-cli-alpine AS base
 
 RUN set -ex \
  && apk add --update --no-cache \
@@ -24,7 +24,7 @@ RUN set -ex \
     findmnt \
     sshfs \
     yaml-dev \
- && curl -L https://github.com/docker/compose/releases/download/v2.19.1/docker-compose-linux-$(uname -m) > /usr/bin/docker-compose \
+ && curl -L https://github.com/docker/compose/releases/download/v2.35.1/docker-compose-linux-$(uname -m) > /usr/bin/docker-compose \
  && chmod +x /usr/bin/docker-compose \
  && pecl install yaml \
  && docker-php-ext-enable yaml \
@@ -51,7 +51,7 @@ RUN set -ex \
  && chmod a+x /app/bin/* \
  && composer install --no-interaction -d /app
 
-ENV PATH /app/bin:$PATH
+ENV PATH=/app/bin:$PATH
 
 ENTRYPOINT ["/sbin/tini", "--"]
 

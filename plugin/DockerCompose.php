@@ -22,7 +22,7 @@ class DockerCompose extends Orchestrator
         $valid = self::checkDockerComposeFile ($path, $namespace);
 
         if (!$valid)
-            throw new Exception ('Invalid docker-compose.yaml file! Please, check configuration (volumes, ports, enviroment variables, etc)');
+            throw new Exception ('Invalid docker-compose.yaml file! Please, check configuration (volumes, ports, environment variables, etc)');
 
         chdir ($path);
 
@@ -148,7 +148,7 @@ class DockerCompose extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File docker-compose.yaml is INVALID! Please, check configuration (volumes, ports, enviroment variables, etc). \n";
+            echo "ERROR > File docker-compose.yaml is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
 
             return FALSE;
         }
@@ -207,11 +207,7 @@ class DockerCompose extends Orchestrator
         if (!array_key_exists ('networks', $config) || !is_array ($config ['networks']) || sizeof ($config ['networks']) !== 1 ||
             !array_key_exists ('external', $config ['networks'][array_key_first ($config ['networks'])]) || !(bool) $config ['networks'][array_key_first ($config ['networks'])]['external'] ||
             !array_key_exists ('name', $config ['networks'][array_key_first ($config ['networks'])]) || trim ($config ['networks'][array_key_first ($config ['networks'])]['name']) !== $namespace)
-        {
-            echo "ERROR > Is needed to exists ONE, and only one, external network to entire stack in 'docker-compose.yaml'. Must be named '". $namespace ."'. See https://docs.docker.com/compose/networking/ for more info. \n";
-
-            return FALSE;
-        }
+            echo "WARNING > Its recommended that there is ONE, and only one, external network for the entire stack in 'docker-compose.yaml' (named '". $namespace ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         if (!array_key_exists ('services', $config) || !is_array ($config ['services']))
         {
@@ -227,7 +223,7 @@ class DockerCompose extends Orchestrator
                 {
                     if (!isset ($port ['published']) || !(int) $port ['published'])
                     {
-                        echo "ERROR > Service '". $name ."' trying to expose a randomic port. All ports in services must be explicit! If you are not going to expose this service, remove it by setting a suitable 'profile'. \n";
+                        echo "ERROR > Service '". $name ."' trying to expose a random port. All ports in services must be explicit! If you are not going to expose this service, remove it by setting a suitable 'profile'. \n";
 
                         return FALSE;
                     }
@@ -277,7 +273,7 @@ class DockerCompose extends Orchestrator
 
         if (sizeof ($cli))
         {
-            echo "WARNING > Some CLI recomended services are NOT FOUND at docker-compose.yaml: ". implode (", ", $cli) ."! Please, check configuration. \n";
+            echo "WARNING > Some CLI recommended services are NOT FOUND at docker-compose.yaml: ". implode (", ", $cli) ."! Please, check configuration. \n";
 
             $warning = TRUE;
         }

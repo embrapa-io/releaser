@@ -132,7 +132,7 @@ class DockerSwarm extends Orchestrator
         unset ($return);
         unset ($output);
 
-        echo "INFO > Deploying aplication stack as '". $name ."' in cluster with Docker Swarm... \n";
+        echo "INFO > Deploying application stack as '". $name ."' in cluster with Docker Swarm... \n";
 
         echo 'COMMAND > env $(cat .env && cat .env.io) '. self::DOCKER .' stack deploy -c .embrapa/swarm/deployment.yaml '. $name ."\n";
 
@@ -194,7 +194,7 @@ class DockerSwarm extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File 'docker-compose.yaml' is INVALID! Please, check configuration (volumes, ports, enviroment variables, etc). \n";
+            echo "ERROR > File 'docker-compose.yaml' is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
 
             return FALSE;
         }
@@ -222,7 +222,7 @@ class DockerSwarm extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File '.embrapa/swarm/deployment.yaml' is INVALID! Please, check configuration (volumes, ports, enviroment variables, etc). \n";
+            echo "ERROR > File '.embrapa/swarm/deployment.yaml' is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
 
             return FALSE;
         }
@@ -328,20 +328,12 @@ class DockerSwarm extends Orchestrator
         if (!array_key_exists ('networks', $cBuild) || !is_array ($cBuild ['networks']) || sizeof ($cBuild ['networks']) !== 1 ||
             !array_key_exists ('external', $cBuild ['networks'][array_key_first ($cBuild ['networks'])]) || !(bool) $cBuild ['networks'][array_key_first ($cBuild ['networks'])]['external'] ||
             !array_key_exists ('name', $cBuild ['networks'][array_key_first ($cBuild ['networks'])]) || trim ($cBuild ['networks'][array_key_first ($cBuild ['networks'])]['name']) !== $prefix)
-        {
-            echo "ERROR > Is needed to exists ONE, and only one, external network to entire stack in 'docker-compose.yaml'. Must be named '". $prefix ."'. See https://docs.docker.com/compose/networking/ for more info. \n";
-
-            return FALSE;
-        }
+            echo "WARNING > Its recommended that there is ONE, and only one, external network to entire stack in 'docker-compose.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         if (!array_key_exists ('networks', $cDeply) || !is_array ($cDeply ['networks']) || sizeof ($cDeply ['networks']) !== 1 ||
             !array_key_exists ('external', $cDeply ['networks'][array_key_first ($cDeply ['networks'])]) || !(bool) $cDeply ['networks'][array_key_first ($cDeply ['networks'])]['external'] ||
             !array_key_exists ('name', $cDeply ['networks'][array_key_first ($cDeply ['networks'])]) || trim ($cDeply ['networks'][array_key_first ($cDeply ['networks'])]['name']) !== $prefix)
-        {
-            echo "ERROR > Is needed to exists ONE, and only one, external network to entire stack in '.embrapa/swarm/deployment.yaml'. Must be named '". $prefix ."'. See https://docs.docker.com/compose/networking/ for more info. \n";
-
-            return FALSE;
-        }
+            echo "WARNING > Its recommended that there is ONE, and only one, external network to entire stack in '.embrapa/swarm/deployment.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         $network = array_key_first ($cDeply ['networks']);
 
@@ -389,11 +381,7 @@ class DockerSwarm extends Orchestrator
 
             if (!isset ($service ['networks']) || !is_array ($service ['networks']) ||
                 sizeof ($service ['networks']) !== 1 || !array_key_exists ($network, $service ['networks']))
-            {
-                echo "ERROR > Service '". $name ."' not refering '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/deployment.yaml'. \n";
-
-                return FALSE;
-            }
+                echo "WARNING > Service '". $name ."' not referring '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/deployment.yaml'. \n";
 
             if (isset ($service ['deploy']['mode']) && trim ($service ['deploy']['mode']) != 'global')
             {
@@ -447,7 +435,7 @@ class DockerSwarm extends Orchestrator
 
         if (sizeof ($cli))
         {
-            echo "WARNING > Some CLI recomended services are NOT FOUND at 'docker-compose.yaml' or '.embrapa/swarm/cli/': ". implode (", ", $cli) ."! Please, check configuration. \n";
+            echo "WARNING > Some CLI recommended services are NOT FOUND at 'docker-compose.yaml' or '.embrapa/swarm/cli/': ". implode (", ", $cli) ."! Please, check configuration. \n";
 
             $warning = TRUE;
         }
@@ -534,7 +522,7 @@ class DockerSwarm extends Orchestrator
         unset ($return);
         unset ($output);
 
-        echo "INFO > Deploying aplication stack as '". $name ."' in cluster with Docker Swarm... \n";
+        echo "INFO > Deploying application stack as '". $name ."' in cluster with Docker Swarm... \n";
 
         echo 'COMMAND > env $(cat .env && cat .env.io) '. self::DOCKER .' stack deploy -c .embrapa/swarm/deployment.yaml '. $name ."\n";
 
@@ -566,7 +554,7 @@ class DockerSwarm extends Orchestrator
         $valid = self::checkDockerSwarmFile ($path, $prefix);
 
         if (!$valid)
-            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, enviroment variables, etc)');
+            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, environment variables, etc)');
 
         chdir ($path);
 
@@ -649,9 +637,9 @@ class DockerSwarm extends Orchestrator
             if (!isset ($s ['image']))
                 throw new Exception ("Service '". $name ."' has no image! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
 
-            if (!isset ($s ['networks']) || !is_array ($s ['networks']) ||
-                sizeof ($s ['networks']) !== 1 || !array_key_exists ($network, $s ['networks']))
-                throw new Exception ("Service '". $name ."' not refering '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
+            // if (!isset ($s ['networks']) || !is_array ($s ['networks']) ||
+            //     sizeof ($s ['networks']) !== 1 || !array_key_exists ($network, $s ['networks']))
+            //     throw new Exception ("Service '". $name ."' not referring '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (isset ($s ['deploy']['mode']))
                 throw new Exception ("CLI services cannot be replicated! Remove deploy mode at service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");

@@ -50,7 +50,7 @@ if [ ! -f "/data/.env" ]; then
 
     while
       read -p "GitLab token: " token
-      [[ -z $token || ${#token} != 20 ]]
+      [[ -z $token || ${#token} < 10 ]]
     do true; done
 
     echo ""
@@ -74,7 +74,7 @@ if [ ! -f "/data/.env" ]; then
     fi
 
     while
-      read -p "SMTP from (e.g., no-reply@example.com): " smtp_from
+      read -p "SMTP from (e.g., no-reply@embrapa.br): " smtp_from
       [[ -z $smtp_from || $smtp_from =~ [^a-zA-Z0-9,-@\.] ]]
     do true; done
 

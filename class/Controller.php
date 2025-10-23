@@ -166,7 +166,7 @@ class Controller
 
         try
         {
-            Mail::singleton ()->send ('RELEASER - E-MAIL TEST', "It's ok!", $addresses);
+            Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - E-MAIL TEST', "It's ok!", $addresses);
 
             echo "SUCCESS > Sended! \n";
         }

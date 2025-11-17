@@ -75,7 +75,13 @@ class GitLab
 
     public function reposSearch ($path)
     {
-        return $this->client->projects ()->all ([ 'search' => $path, 'search_namespaces' => TRUE, 'simple' => TRUE ]);
+        $list = $this->client->projects ()->all ([ 'search' => $path, 'search_namespaces' => TRUE, 'simple' => TRUE ]);
+
+        foreach ($list as $key => $candidate)
+            if ($candidate ['path_with_namespace'] === $path)
+                return [ $candidate ];
+
+        return [];
     }
 
     public function reposShow ($id)

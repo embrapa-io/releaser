@@ -202,6 +202,9 @@ class Controller
 
         $loaded = json_decode (file_get_contents ($builds));
 
+        if (!is_array ($loaded) || !sizeof ($loaded))
+            throw new Exception ("No builds configured (or malformed JSON) in file '". $builds ."'!");
+
         $slice = explode (',', $input);
 
         $all = sizeof ($slice) == 1 && trim ($slice [0]) == '--all' ? TRUE : FALSE;

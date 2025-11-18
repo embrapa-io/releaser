@@ -14,9 +14,12 @@ if [ "$publish" != "${publish#[Yy]}" ]; then
   # https://stackoverflow.com/questions/47809904/how-to-set-architecture-for-docker-build-to-arm64
   # https://docs.docker.com/build/guide/multi-platform/
 
+  # docker buildx create --name multiarch --driver docker-container --use
+  # docker buildx inspect --bootstrap
+
   docker buildx build \
     --platform linux/arm64/v8,linux/amd64 \
-    --builder container \
+    --builder multiarch \
     --tag embrapa/releaser \
     --tag embrapa/releaser:$version \
     --build-arg IO_RELEASER_VERSION=$version \

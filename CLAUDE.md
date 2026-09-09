@@ -39,6 +39,6 @@ Não há namespaces, autoload PSR-4, testes automatizados nem lint configurado. 
 
 ## `cleaner` (rotação de backups)
 
-- `io cleaner <builds|--all> [--dry-run]`; daemon diário com `auto.cleaner` (**padrão `false`** quando ausente; aceita `true` ou `{"daily":7,"weekly":4,"monthly":3,"undated":"ignore|mtime"}`).
+- `io cleaner <builds|--all> [--dry-run]`; daemon diário com `auto.cleaner`: `false`/ausente (desligado, **padrão**), `true` (7 diários, 4 semanais, 3 mensais) ou `"undated"` (idem, e arquivos sem data no nome entram pela data de modificação).
 - Acessa o volume externo de _backup_ da _build_ (`{proj}_{app}_{stage}_backup`, ou o volume `backup` do compose interpolado) com `docker run --rm -v <vol>:/backup alpine:3` para listar (`find … stat -c "%Y|%n"`) e apagar (`rm -f`). Não depende do serviço `backup` da app: a data vem do nome do arquivo (`AAAA-MM-DD_HH-MM-SS` como sufixo ou `AAAA_MM_DD_HH_MM_SS` como prefixo); arquivos **sem data no nome são preservados e ignorados**, nunca apagados.
 - Semântica: níveis disjuntos por **contagem** de períodos com arquivo — nunca apaga por falta de backups novos. Ver o cabeçalho de `class/Retention.php`.

@@ -39,33 +39,23 @@ class Retention
     ];
 
     /**
-     * Normaliza o atributo `auto.cleaner` do builds.json em uma política.
-     * Aceita TRUE (política padrão), FALSE/ausente (desligado) ou um objeto com
-     * qualquer combinação de `daily`, `weekly`, `monthly` (inteiros >= 0) e
-     * `undated` ('ignore' | 'mtime').
+     * Normaliza o atributo `auto.cleaner` do builds.json em uma política:
+     *   false / ausente -> desligado;
+     *   true            -> política padrão (7 diários, 4 semanais, 3 mensais);
+     *   "undated"       -> política padrão + arquivos sem data no nome entram
+     *                      na rotação pela data de modificação (para apps fora
+     *                      do padrão de nome dos boilerplates).
      *
      * @return array|FALSE Política normalizada ou FALSE se desligado.
      */
     static public function policy ($auto)
     {
-        if ($auto === NULL || $auto === FALSE) return FALSE;
+        if ($auto === TRUE) return self::DEFAULT_POLICY;
 
-        $policy = self::DEFAULT_POLICY;
+        if (is_string ($auto) && strtolower (trim ($auto)) === 'undated')
+            return array_merge (self::DEFAULT_POLICY, [ 'undated' => 'mtime' ]);
 
-        if ($auto === TRUE) return $policy;
-
-        if (is_object ($auto)) $auto = get_object_vars ($auto);
-
-        if (!is_array ($auto)) return FALSE;
-
-        foreach ([ 'daily', 'weekly', 'monthly' ] as $key)
-            if (array_key_exists ($key, $auto) && is_numeric ($auto [$key]) && intval ($auto [$key]) >= 0)
-                $policy [$key] = intval ($auto [$key]);
-
-        if (array_key_exists ('undated', $auto) && in_array ($auto ['undated'], [ 'ignore', 'mtime' ], TRUE))
-            $policy ['undated'] = $auto ['undated'];
-
-        return $policy;
+        return FALSE;
     }
 
     /**

@@ -10,8 +10,9 @@ if ($_dryRun) echo "INFO > Dry run: nothing will be deleted. \n";
 
 foreach ($_builds as $_build => $_b)
 {
-	// Em modo daemon só roda quando 'auto.cleaner' está explicitamente ligado (padrão: desligado).
-	// Em execução manual roda sempre, com a política do builds.json (se houver) ou a padrão.
+	// 'auto.cleaner': false/ausente (desligado), true ou "undated" — ver Retention::policy().
+	// Em modo daemon só roda quando ligado. Em execução manual roda sempre, com a
+	// política do builds.json (se houver) ou a padrão.
 	$auto = isset ($_b->auto) && isset ($_b->auto->cleaner) ? $_b->auto->cleaner : FALSE;
 
 	$policy = Retention::policy ($auto);

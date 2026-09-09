@@ -13,7 +13,7 @@ Documentação de uso (instalação, `builds.json`, comandos, modo _daemon_): ht
 | `stop` / `restart` | Derruba / (re)inicia a _stack_ | — |
 | `rollback` | Volta a _build_ para uma _tag_ anterior | — |
 | `backup` | Executa o serviço `backup` da _stack_ | diário (`auto.backup`) |
-| `cleaner` | Rotaciona os arquivos do volume de _backup_: mantém os últimos **7 diários, 4 semanais e 3 mensais** (`--dry-run` só mostra) | diário, após o `backup` (`auto.cleaner`, padrão `false`) |
+| `cleaner` | Rotaciona os arquivos do volume de _backup_: mantém os últimos **7 diários, 4 semanais e 3 mensais** (`--dry-run` só mostra) | diário, após o `backup` (`auto.cleaner`: `false` padrão, `true`, ou `"undated"` para incluir arquivos sem data no nome) |
 | `sanitize` | Executa o serviço `sanitize` da _stack_ | mensal (`auto.sanitize`) |
 | `info` | Mostra o diretório de cada _build_ implantada e comandos úteis | — |
 | `mail` | Testa o SMTP | — |

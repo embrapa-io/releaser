@@ -175,6 +175,35 @@ abstract class Orchestrator
         return $volume;
     }
 
+    /**
+     * Prefixo de ambiente para os comandos docker-compose das builds.
+     *
+     * `env -i` isola o subprocesso do ambiente do próprio Releaser: o bin/io e os
+     * jobs exportam o /data/.env (SERVER, SMTP_HOST, SMTP_PORT, SMTP_SECURE, ...)
+     * e variável de ambiente tem precedência sobre o .env do projeto no Compose.
+     * Sem o isolamento, uma app que use os mesmos nomes (ex.: SMTP_* do Leantime)
+     * recebe os valores do Releaser em vez dos do builds.json. Só sobrevivem as
+     * variáveis necessárias ao docker/compose e as do arquivo da build (.env.io
+     * ou .env.sh), exatamente como antes.
+     */
+    protected static function env (...$files)
+    {
+        $keep = [];
+
+        foreach ([ 'PATH', 'HOME', 'DOCKER_HOST', 'DOCKER_CONFIG', 'DOCKER_CERT_PATH', 'DOCKER_TLS_VERIFY', 'DOCKER_BUILDKIT', 'COMPOSE_DOCKER_CLI_BUILD' ] as $name)
+        {
+            $value = getenv ($name);
+
+            if ($value !== FALSE && $value !== '') $keep [] = $name .'='. escapeshellarg ($value);
+        }
+
+        $cat = [];
+
+        foreach ($files as $file) $cat [] = 'cat '. $file;
+
+        return 'env -i '. implode (' ', $keep) .' $('. implode (' && ', $cat) .')';
+    }
+
     public static function humanSize ($bytes)
     {
         $units = [ 'B', 'KB', 'MB', 'GB', 'TB' ];

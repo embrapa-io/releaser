@@ -28,16 +28,16 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Trying to execute backup service before deploy...\n";
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output, $return);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output, $return);
 
         unset ($return);
         unset ($output);
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output, $return);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output, $return);
 
         if ($return !== 0)
         {
@@ -65,9 +65,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Building application with Docker Compose... \n";
 
-        echo 'COMMAND > set -e && env $(cat .env.io) '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $?'."\n";
+        echo 'COMMAND > set -e && '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $?'."\n";
 
-        passthru ('set -e && env $(cat .env.io) '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $? 2>&1', $return);
+        passthru ('set -e && '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $? 2>&1', $return);
 
         if ($return !== 0)
             throw new Exception ('Error when buildings containers with Docker Compose');
@@ -77,9 +77,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Getting valid services (will ignore: ". implode (", ", self::CLI_SERVICES) .")... \n";
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' config --services'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' config --services 2>&1', $services, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services 2>&1', $services, $return);
 
         if ($return !== 0)
             throw new Exception ('Error when getting services from docker-compose.yaml');
@@ -96,9 +96,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Starting application with Docker Compose... \n";
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' start '. implode (' ', $services) ."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' start '. implode (' ', $services) ."\n";
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' start '. implode (' ', $services) .' 2>&1', $output, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' start '. implode (' ', $services) .' 2>&1', $output, $return);
 
         echo implode ("\n", $output) ."\n";
 
@@ -119,7 +119,7 @@ class DockerCompose extends Orchestrator
 
         chdir ($folder);
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' config'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config'."\n";
 
         if (!file_exists ('.embrapa') || !is_dir ('.embrapa'))
         {
@@ -131,7 +131,7 @@ class DockerCompose extends Orchestrator
         $out = tempnam ('.embrapa', '_');
         $log = tempnam ('.embrapa', '_');
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' config > '. $out .' 2> '. $log, $trash, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config > '. $out .' 2> '. $log, $trash, $return);
 
         $output = file_exists ($log) && is_readable ($log) ? @file ($log) : [];
 
@@ -241,9 +241,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > All published PORTs are valid! \n";
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' config --services'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' config --services 2>&1', $services1, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services 2>&1', $services1, $return);
 
         echo "INFO > Checking if has CLI services starting in application deployment... ";
 
@@ -261,9 +261,9 @@ class DockerCompose extends Orchestrator
 
         echo "it's ok! \n";
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' config --services'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' config --services 2>&1', $services2, $return);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>&1', $services2, $return);
 
         $cli = self::CLI_SERVICES;
 
@@ -299,9 +299,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Stopping application with Docker Compose... \n";
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' stop'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' stop'."\n";
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' stop 2>&1', $output, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' stop 2>&1', $output, $return);
 
         if (sizeof ($output)) echo implode ("\n", $output) ."\n";
 
@@ -322,9 +322,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Restarting application with Docker Compose... \n";
 
-        echo 'COMMAND > env $(cat .env.io) '. self::DOCKER_COMPOSE .' restart'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart'."\n";
 
-        exec ('env $(cat .env.io) '. self::DOCKER_COMPOSE .' restart 2>&1', $output, $return);
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart 2>&1', $output, $return);
 
         if (sizeof ($output)) echo implode ("\n", $output) ."\n";
 
@@ -345,9 +345,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Trying to execute backup service...\n";
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output1, $return1);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output1, $return1);
 
         if ($return1 !== 0)
         {
@@ -356,9 +356,9 @@ class DockerCompose extends Orchestrator
             throw new Exception ("Backup service failed to BUILD");
         }
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output2, $return2);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output2, $return2);
 
         if ($return2 !== 0)
         {
@@ -381,9 +381,9 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Trying to execute sanitize service...\n";
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache sanitize'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache sanitize'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' build --force-rm --no-cache sanitize 2>&1', $output1, $return1);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache sanitize 2>&1', $output1, $return1);
 
         if ($return1 !== 0)
         {
@@ -392,9 +392,9 @@ class DockerCompose extends Orchestrator
             throw new Exception ("Sanitize service failed to BUILD");
         }
 
-        echo 'COMMAND > env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps sanitize'."\n";
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps sanitize'."\n";
 
-        exec ('env $(cat .env.sh) '. self::DOCKER_COMPOSE .' run --rm --no-deps sanitize 2>&1', $output2, $return2);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps sanitize 2>&1', $output2, $return2);
 
         if ($return2 !== 0)
         {

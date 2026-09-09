@@ -3,36 +3,31 @@
 /**
  * Integração do Releaser com o Sentry (sentry.io, org 'embrapa-io', projeto 'releaser').
  *
- * O DSN é distribuído com a imagem: todo Releaser instalado reporta para o mesmo
+ * O DSN é HARDCODED de propósito: todo Releaser instalado reporta para o mesmo
  * projeto, diferenciado por `environment` (= SERVER do /data/.env) e `release`
- * (= versão da imagem). Pode ser sobrescrito por SENTRY_DSN no /data/.env, ou
- * desligado com SENTRY_DSN=off.
+ * (= versão da imagem). Não é configurável pelo /data/.env — esse arquivo é
+ * editado por equipes distribuídas que só querem fazer deploy das suas apps,
+ * e não tratar bugs do Releaser.
  *
  * O que é enviado:
- *  - Exceções não tratadas (captureException em run.php);
+ *  - Exceções não tratadas (captureException em run.php) — issues do RELEASER;
  *  - Toda linha de saída com prefixo convencional (INFO/COMMAND/WARNING/ERROR/
  *    SUCCESS/CRITICAL/FINISH >) vira um log do Sentry (produto Logs), com os
- *    atributos operation/mode/build/project/app/stage;
- *  - Toda linha "ERROR >" vira também um evento (issue) com as tags da build
- *    corrente — hoje esses erros só geram `continue` no controller e, no daemon,
- *    não chegam nem ao e-mail.
+ *    atributos operation/mode/build/project/app/stage.
+ *
+ * O que NÃO é enviado como issue: erros de deploy/backup de uma build
+ * ("ERROR >"). Cada app tem o próprio DSN e esses erros vão por e-mail à equipe.
  *
  * O contexto de build é lido da própria saída: os controllers imprimem
  * "=== projeto/app@stage ===" ao iniciar cada build.
  */
 
-const SENTRY_DEFAULT_DSN = 'https://dca31eca2c6644c687f46ecb99602841@o1289077.ingest.sentry.io/4505550695759872';
+const SENTRY_DSN = 'https://dca31eca2c6644c687f46ecb99602841@o1289077.ingest.sentry.io/4505550695759872';
 
 function sentryInit ($operation, $daemon)
 {
-    $dsn = trim ((string) getenv ('SENTRY_DSN'));
-
-    if ($dsn === '') $dsn = SENTRY_DEFAULT_DSN;
-
-    if (in_array (strtolower ($dsn), [ 'off', 'false', 'no', '0' ])) return FALSE;
-
     \Sentry\init ([
-        'dsn' => $dsn,
+        'dsn' => SENTRY_DSN,
         'release' => 'releaser@'. (getenv ('IO_RELEASER_VERSION') ?: 'dev'),
         'environment' => getenv ('SERVER') ?: 'unknown',
         'enable_logs' => TRUE,
@@ -101,20 +96,6 @@ function sentryOutput ($chunk, $phase)
                 case 'ERROR':    $logger->error ('%s', [ $message ], $attributes); break;
                 case 'CRITICAL': $logger->fatal ('%s', [ $message ], $attributes); break;
                 default:         $logger->info ('%s', [ $message ], $attributes);
-            }
-
-            // "ERROR >" é o erro por build que hoje só gera `continue`; vira issue.
-            // "CRITICAL >" já é coberto pelo captureException em run.php.
-            if ($level === 'ERROR')
-            {
-                \Sentry\withScope (function (\Sentry\State\Scope $scope) use ($message, $attributes) {
-                    foreach ([ 'build', 'project', 'app', 'stage' ] as $tag)
-                        if (array_key_exists ($tag, $attributes)) $scope->setTag ($tag, $attributes [$tag]);
-
-                    $scope->setFingerprint ([ '{{ default }}', $attributes ['operation'], $attributes ['build'] ?? '-' ]);
-
-                    \Sentry\captureMessage ($message, \Sentry\Severity::error ());
-                });
             }
         }
         catch (\Throwable $e) {} // monitoramento nunca pode derrubar a operação

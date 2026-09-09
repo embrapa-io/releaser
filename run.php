@@ -235,6 +235,7 @@ require_once 'vendor/autoload.php';
 
 require_once 'helper/error.php';
 require_once 'helper/sentry.php';
+require_once 'helper/output.php';
 
 require_once 'class/GitLab.php';
 require_once 'class/GitClient.php';
@@ -272,7 +273,7 @@ try
 
 	echo "FINISH > All done after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
 
-	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', ob_get_flush ());
+	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', mailBody ());
 
 	exit (0);
 }
@@ -289,7 +290,7 @@ try
 {
 	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
 
-	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', ob_get_flush ());
+	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', mailBody ());
 }
 catch (Exception $e)
 {

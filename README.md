@@ -20,7 +20,7 @@ Documentação de uso (instalação, `builds.json`, comandos, modo _daemon_): ht
 
 ## Monitoramento
 
-Todo Releaser reporta ao Sentry (sentry.io, projeto `releaser`): exceções, cada linha de saída como log (com `operation`, `build`, `project`, `app`, `stage`) e cada `ERROR >` por _build_ como issue. `environment` é o `SERVER` do `/data/.env` e `release` é a versão da imagem. Para usar outro DSN, defina `SENTRY_DSN` no `/data/.env`; `SENTRY_DSN=off` desliga.
+Todo Releaser reporta ao Sentry (sentry.io, projeto `releaser`, DSN embutido na imagem): exceções do próprio Releaser como issues e cada linha de saída como log (com `operation`, `build`, `project`, `app`, `stage`). `environment` é o `SERVER` do `/data/.env` e `release` é a versão da imagem. Erros de deploy/backup de uma _build_ **não** viram issue: cada app tem o próprio DSN e esses erros vão por e-mail à equipe.
 
 ## Desenvolvimento
 

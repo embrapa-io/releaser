@@ -54,11 +54,22 @@ class Mail
             ->from ($this->from)
             ->to ($this->log)
             ->subject ($subject)
-            ->text ($message);
+            ->text (is_string ($message) ? $message : '');
 
         if (is_array ($cc) && sizeof ($cc)) $email->cc (...$cc);
 
-        $this->mailer->send ($email);
+        // Falha de SMTP não pode abortar a operação (nem a fila de builds do
+        // daemon): registra no Sentry como erro do Releaser e segue.
+        try
+        {
+            $this->mailer->send ($email);
+        }
+        catch (\Throwable $e)
+        {
+            echo "WARNING > Impossible to send e-mail '". $subject ."': ". $e->getMessage () ." \n";
+
+            try { \Sentry\captureException ($e); } catch (\Throwable $ignored) {}
+        }
     }
 
     static public function isValid ($addr)

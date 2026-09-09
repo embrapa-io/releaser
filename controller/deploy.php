@@ -152,7 +152,7 @@ foreach ($_builds as $_build => $_b)
 
 		echo "ERROR > Impossible to get refs to tag ". $_newer ['name'] ." (commit '". $_newer ['commit']['id'] ."')! ". $e->getMessage () ."! \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -174,7 +174,7 @@ foreach ($_builds as $_build => $_b)
 
 		echo "ERROR > New tag ". $_newer ['name'] ." has been not created from branch '". $_b->stage ."'! Please, delete this tag and re-create from correct branch. \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -189,7 +189,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "ERROR > Impossible to get milestones! ". $e->getMessage () ."! \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -224,7 +224,7 @@ foreach ($_builds as $_build => $_b)
 
 		echo "ERROR > Impossibe to get repository settings ('.embrapa/settings.json'). ". $e->getMessage () ."! \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -265,7 +265,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "ERROR > Environment variables can not contain spaces! Check attribute 'env' at file 'builds.json'. \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -286,7 +286,7 @@ foreach ($_builds as $_build => $_b)
 
 		echo "ERROR > Impossibe to clone repository. ". $e->getMessage () ."! \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -299,7 +299,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "ERROR > Impossibe to deploy tag ". $_newer ['name'] .". ". $e->getMessage () ."! \n\n";
 
-		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', ob_get_flush (), $_b->team);
+		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
@@ -315,5 +315,5 @@ foreach ($_builds as $_build => $_b)
 
 	echo "SUCCESS > All done! Version '". $_newer ['name'] ."' in '". $_b->stage ."' stage of application '". $_b->project ."/". $_b->app ."' is DEPLOYED! \n";
 
-	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS', ob_get_flush (), $_b->team);
+	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS', mailBody (), $_b->team);
 }

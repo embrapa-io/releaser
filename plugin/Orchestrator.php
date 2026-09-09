@@ -51,16 +51,50 @@ abstract class Orchestrator
 
         echo "INFO > Backup volume: '". $volume ."' \n";
 
-        $files = static::listBackupFiles ($volume);
+        $all = static::listBackupFiles ($volume);
+
+        // Só os arquivos DESTA build ('{project}_{app}_{stage}_...'): o mesmo
+        // volume/diretório pode ser compartilhado por várias builds (dica das
+        // docs do Releaser) e arquivos de outras builds jamais são tocados.
+        $prefix = $namespace .'_';
+
+        $files = [];
+        $foreign = 0;
+
+        foreach ($all as $file)
+            if (strpos ($file ['name'], $prefix) === 0) $files [] = $file; else $foreign++;
+
+        $bytes = function ($list) { $t = 0; foreach ($list as $f) $t += intval ($f ['size'] ?? 0); return $t; };
+
+        $stats = [
+            'volume' => $volume,
+            'files_before' => sizeof ($files),
+            'bytes_before' => $bytes ($files),
+            'foreign' => $foreign,
+            'bytes_foreign' => $bytes (array_filter ($all, function ($f) use ($prefix) { return strpos ($f ['name'], $prefix) !== 0; }))
+        ];
+
+        if ($foreign)
+            echo "INFO > Ignoring ". $foreign ." file(s) of other builds in the same volume (name does not start with '". $prefix ."'). \n";
 
         if (!sizeof ($files))
         {
-            echo "WARNING > No backup files found in volume! \n";
+            echo "WARNING > No backup files of this build found in volume! \n";
 
-            return [ 'keep' => [], 'delete' => [] ];
+            return [ 'keep' => [], 'delete' => [], 'ignore' => [], 'stats' => $stats + [ 'files_after' => 0, 'bytes_after' => 0, 'bytes_deleted' => 0 ] ];
         }
 
         $plan = Retention::plan ($files, $policy);
+
+        $sizes = [];
+
+        foreach ($files as $file) $sizes [$file ['name']] = intval ($file ['size'] ?? 0);
+
+        $deleted = 0;
+
+        foreach ($plan ['delete'] as $name) $deleted += $sizes [$name] ?? 0;
+
+        $plan ['stats'] = $stats + [ 'files_after' => sizeof ($files) - sizeof ($plan ['delete']), 'bytes_after' => $stats ['bytes_before'] - $deleted, 'bytes_deleted' => $deleted ];
 
         if (sizeof ($plan ['ignore']))
         {
@@ -73,7 +107,7 @@ abstract class Orchestrator
         echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($files) - sizeof ($plan ['ignore'])) ." backup file(s) [D = daily, W = weekly, M = monthly]: \n";
 
         foreach ($plan ['keep'] as $name => $tags)
-            echo "  ". str_pad ($tags, 4) . $name ."\n";
+            echo "  ". str_pad ($tags, 4) . str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
 
         if (!sizeof ($plan ['delete']))
         {
@@ -82,10 +116,10 @@ abstract class Orchestrator
             return $plan;
         }
 
-        echo "INFO > ". ($dryRun ? 'Would delete' : 'Deleting') ." ". sizeof ($plan ['delete']) ." file(s): \n";
+        echo "INFO > ". ($dryRun ? 'Would delete' : 'Deleting') ." ". sizeof ($plan ['delete']) ." file(s) (". static::humanSize ($deleted) ."): \n";
 
         foreach ($plan ['delete'] as $name)
-            echo "  ". $name ."\n";
+            echo "  ". str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
 
         if (!$dryRun) static::deleteBackupFiles ($volume, $plan ['delete']);
 
@@ -141,12 +175,25 @@ abstract class Orchestrator
         return $volume;
     }
 
+    public static function humanSize ($bytes)
+    {
+        $units = [ 'B', 'KB', 'MB', 'GB', 'TB' ];
+
+        $i = 0;
+
+        $value = floatval ($bytes);
+
+        while ($value >= 1024 && $i < sizeof ($units) - 1) { $value /= 1024; $i++; }
+
+        return number_format ($value, $i ? 1 : 0, ',', '.') .' '. $units [$i];
+    }
+
     /**
-     * Lista os arquivos regulares na raiz do volume: [['name' => string, 'mtime' => int], ...]
+     * Lista os arquivos regulares na raiz do volume: [['name' => string, 'mtime' => int, 'size' => int], ...]
      */
     protected static function listBackupFiles ($volume)
     {
-        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup:ro '. static::CLEANER_IMAGE .' find /backup -maxdepth 1 -type f -exec stat -c "%Y|%n" {} +';
+        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup:ro '. static::CLEANER_IMAGE .' find /backup -maxdepth 1 -type f -exec stat -c "%Y|%s|%n" {} +';
 
         echo 'COMMAND > '. $cmd ."\n";
 
@@ -163,9 +210,9 @@ abstract class Orchestrator
 
         foreach ($output as $line)
         {
-            if (!preg_match ('/^(\d+)\|\/backup\/(.+)$/', trim ($line), $m)) continue;
+            if (!preg_match ('/^(\d+)\|(\d+)\|\/backup\/(.+)$/', trim ($line), $m)) continue;
 
-            $files [] = [ 'name' => $m [2], 'mtime' => intval ($m [1]) ];
+            $files [] = [ 'name' => $m [3], 'mtime' => intval ($m [1]), 'size' => intval ($m [2]) ];
         }
 
         return $files;

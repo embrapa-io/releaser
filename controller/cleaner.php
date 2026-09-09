@@ -8,6 +8,10 @@ echo "INFO > Checking status of ". sizeof ($_builds) ." build(s) to CLEAN (rotat
 
 if ($_dryRun) echo "INFO > Dry run: nothing will be deleted. \n";
 
+$_summary = [];
+
+$orchestrator = getenv ('ORCHESTRATOR');
+
 foreach ($_builds as $_build => $_b)
 {
 	// 'auto.cleaner': false/ausente (desligado), true ou "undated" — ver Retention::policy().
@@ -63,10 +67,6 @@ foreach ($_builds as $_build => $_b)
 
 	echo "INFO > Rotating backups (keep last ". $policy ['daily'] ." daily, ". $policy ['weekly'] ." weekly and ". $policy ['monthly'] ." monthly)... \n";
 
-	// Usa o orquestrador direto do .env (validado em run.php), sem passar por
-	// Controller::singleton(): a rotação não deve depender da API do GitLab.
-	$orchestrator = getenv ('ORCHESTRATOR');
-
 	try
 	{
 		$result = $orchestrator::cleaner ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $policy, $_dryRun);
@@ -78,5 +78,24 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	$_summary [$_build] = $result ['stats'];
+
 	echo "SUCCESS > All done! Build '". $_build ."': ". sizeof ($result ['keep']) ." backup(s) kept, ". sizeof ($result ['delete']) ." ". ($_dryRun ? 'would be deleted' : 'deleted') .". \n";
+}
+
+if (sizeof ($_summary))
+{
+	echo "\n";
+
+	echo "INFO > Summary". ($_dryRun ? ' (dry run)' : '') .": \n";
+
+	$width = max (array_map ('strlen', array_keys ($_summary)));
+
+	foreach ($_summary as $build => $st)
+		echo "  ". str_pad ($build, $width + 2)
+			. str_pad ($st ['files_before'] ." -> ". $st ['files_after'] ." file(s)", 24)
+			. str_pad ($orchestrator::humanSize ($st ['bytes_before']) ." -> ". $orchestrator::humanSize ($st ['bytes_after']), 24)
+			. "freed ". $orchestrator::humanSize ($st ['bytes_deleted'])
+			. ($st ['foreign'] ? "  (". $st ['foreign'] ." file(s) of other builds untouched, ". $orchestrator::humanSize ($st ['bytes_foreign']) .")" : '')
+			. "\n";
 }

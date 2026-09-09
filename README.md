@@ -18,6 +18,10 @@ Documentação de uso (instalação, `builds.json`, comandos, modo _daemon_): ht
 | `info` | Mostra o diretório de cada _build_ implantada e comandos úteis | — |
 | `mail` | Testa o SMTP | — |
 
+## Monitoramento
+
+Todo Releaser reporta ao Sentry (sentry.io, projeto `releaser`): exceções, cada linha de saída como log (com `operation`, `build`, `project`, `app`, `stage`) e cada `ERROR >` por _build_ como issue. `environment` é o `SERVER` do `/data/.env` e `release` é a versão da imagem. Para usar outro DSN, defina `SENTRY_DSN` no `/data/.env`; `SENTRY_DSN=off` desliga.
+
 ## Desenvolvimento
 
 - Mapa do código e convenções: [`CLAUDE.md`](CLAUDE.md).

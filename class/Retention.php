@@ -32,13 +32,17 @@ class Retention
     const DEFAULT_POLICY = [
         'daily' => 7,
         'weekly' => 4,
-        'monthly' => 3
+        'monthly' => 3,
+        // Arquivos sem data no nome: 'ignore' (preservar, nunca apagar — padrão)
+        // ou 'mtime' (tratar como backups usando a data de modificação).
+        'undated' => 'ignore'
     ];
 
     /**
      * Normaliza o atributo `auto.cleaner` do builds.json em uma política.
      * Aceita TRUE (política padrão), FALSE/ausente (desligado) ou um objeto com
-     * qualquer combinação de `daily`, `weekly` e `monthly` (inteiros >= 0).
+     * qualquer combinação de `daily`, `weekly`, `monthly` (inteiros >= 0) e
+     * `undated` ('ignore' | 'mtime').
      *
      * @return array|FALSE Política normalizada ou FALSE se desligado.
      */
@@ -54,9 +58,12 @@ class Retention
 
         if (!is_array ($auto)) return FALSE;
 
-        foreach (array_keys ($policy) as $key)
+        foreach ([ 'daily', 'weekly', 'monthly' ] as $key)
             if (array_key_exists ($key, $auto) && is_numeric ($auto [$key]) && intval ($auto [$key]) >= 0)
                 $policy [$key] = intval ($auto [$key]);
+
+        if (array_key_exists ('undated', $auto) && in_array ($auto ['undated'], [ 'ignore', 'mtime' ], TRUE))
+            $policy ['undated'] = $auto ['undated'];
 
         return $policy;
     }
@@ -102,7 +109,12 @@ class Retention
 
             $ts = self::timestampFromName ($name);
 
-            if ($ts === NULL) { $ignore [] = [ 'name' => $name, 'ts' => intval ($file ['mtime']) ]; continue; }
+            if ($ts === NULL)
+            {
+                if (($policy ['undated'] ?? 'ignore') !== 'mtime') { $ignore [] = [ 'name' => $name, 'ts' => intval ($file ['mtime']) ]; continue; }
+
+                $ts = intval ($file ['mtime']);
+            }
 
             $items [] = [ 'name' => $name, 'ts' => $ts ];
         }

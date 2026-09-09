@@ -15,6 +15,7 @@ Utilitário de linha de comando + _daemon_ (PHP 8.3 em Alpine, imagem `embrapa/r
 | `class/Retention.php` | Política de retenção GFS por contagem (7 diários / 4 semanais / 3 mensais), pura e testável (`Retention::plan`, `::policy`, `::timestampFromName`). |
 | `class/GitLab.php`, `class/GitClient.php`, `class/Mail.php` | API do GitLab (busca de projetos/tags), clone/checkout (gera `.env.io`, `.env.sh` = `.env.io` com `COMPOSE_PROFILES=cli`, e `.env` a partir do `env` do builds.json), e-mail (`LOG_MAIL` sempre em To, `team` em CC). |
 | `helper/error.php` | `set_error_handler` que **converte qualquer warning em Exception**. Consequência: ler `$_b->auto->x` inexistente aborta a execução — use `isset()`/`??`. |
+| `helper/sentry.php` | Sentry (sentry.io, org `embrapa-io`, projeto `releaser`, DSN embutido; `SENTRY_DSN` no `/data/.env` sobrescreve, `off` desliga). `release` = versão da imagem, `environment` = `SERVER`. Um `ob_start` com callback (passthrough) transforma cada linha `PREFIXO > mensagem` em log do Sentry com atributos `operation/mode/build/project/app/stage` (o contexto de build vem das linhas `=== proj/app@stage ===`), e cada `ERROR >` em issue com tags da build. Não exige nada dos controllers: basta manter o padrão de saída. |
 | `job/*` | Scripts de 13 linhas copiados pelo `Dockerfile` para `/etc/periodic/{15min,daily,monthly}` (crond do BusyBox): `deploy` (15 min), `backup` e `cleaner` (diários; ordem alfabética ⇒ backup antes de cleaner), `sanitize` (mensal). Cada um chama `run.php <cmd>:daemon --all`. |
 | `Dockerfile`, `build.sh` | Imagem multi-estágio (php:8.3-cli-alpine + docker + docker-compose v2 + ext yaml). `build.sh` é interativo e publica multi-arch no Docker Hub com `--build-arg IO_RELEASER_VERSION`. |
 
@@ -38,6 +39,6 @@ Não há namespaces, autoload PSR-4, testes automatizados nem lint configurado. 
 
 ## `cleaner` (rotação de backups)
 
-- `io cleaner <builds|--all> [--dry-run]`; daemon diário com `auto.cleaner` (**padrão `false`** quando ausente; aceita `true` ou `{"daily":7,"weekly":4,"monthly":3}`).
+- `io cleaner <builds|--all> [--dry-run]`; daemon diário com `auto.cleaner` (**padrão `false`** quando ausente; aceita `true` ou `{"daily":7,"weekly":4,"monthly":3,"undated":"ignore|mtime"}`).
 - Acessa o volume externo de _backup_ da _build_ (`{proj}_{app}_{stage}_backup`, ou o volume `backup` do compose interpolado) com `docker run --rm -v <vol>:/backup alpine:3` para listar (`find … stat -c "%Y|%n"`) e apagar (`rm -f`). Não depende do serviço `backup` da app: a data vem do nome do arquivo (`AAAA-MM-DD_HH-MM-SS` como sufixo ou `AAAA_MM_DD_HH_MM_SS` como prefixo); arquivos **sem data no nome são preservados e ignorados**, nunca apagados.
 - Semântica: níveis disjuntos por **contagem** de períodos com arquivo — nunca apaga por falta de backups novos. Ver o cabeçalho de `class/Retention.php`.

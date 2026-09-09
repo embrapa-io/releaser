@@ -234,6 +234,7 @@ if ($_daemon)
 require_once 'vendor/autoload.php';
 
 require_once 'helper/error.php';
+require_once 'helper/sentry.php';
 
 require_once 'class/GitLab.php';
 require_once 'class/GitClient.php';
@@ -243,12 +244,14 @@ require_once 'class/Retention.php';
 require_once 'plugin/DockerCompose.php';
 require_once 'plugin/DockerSwarm.php';
 
-\Sentry\init (['dsn' => 'https://dca31eca2c6644c687f46ecb99602841@o1289077.ingest.sentry.io/4505550695759872' ]);
+sentryInit ($_operation, $_daemon);
 
 set_error_handler ('handleError');
 
 try
 {
+	ob_start ('sentryOutput', 1); // logs/eventos no Sentry a partir da saída (passthrough)
+
 	if ($_daemon) ob_start ();
 
 	$_benchmark = time ();
@@ -269,7 +272,7 @@ try
 
 	echo "FINISH > All done after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
 
-	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', ob_get_clean ());
+	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', ob_get_flush ());
 
 	exit (0);
 }
@@ -286,7 +289,7 @@ try
 {
 	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
 
-	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', ob_get_clean ());
+	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', ob_get_flush ());
 }
 catch (Exception $e)
 {

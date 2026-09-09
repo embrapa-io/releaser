@@ -270,6 +270,15 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	// Mostra o .env que será gravado no clone (lido AGORA do builds.json), com
+	// senhas/segredos mascarados — permite conferir que o --force releu o arquivo.
+	echo "INFO > Build environment variables (.env, from builds.json): \n\n";
+
+	foreach ($_b->env as $variable => $value)
+		echo $variable .'='. (preg_match ('/PASS|SECRET|TOKEN|KEY|DSN/i', $variable) && strlen ((string) $value) ? str_repeat ('*', 8) : $value) ."\n";
+
+	echo "\n";
+
 	echo "INFO > Trying to clone app... ";
 
 	unset ($clone);

@@ -138,6 +138,17 @@ class Controller
         require self::PATH .'sanitize.php';
     }
 
+    static public function cleaner ($slice, $flag = NULL)
+    {
+        global $_daemon, $_data;
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        $_flag = $flag;
+
+        require self::PATH .'cleaner.php';
+    }
+
     static public function info ()
     {
         global $_data;

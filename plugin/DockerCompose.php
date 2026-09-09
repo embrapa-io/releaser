@@ -404,6 +404,11 @@ class DockerCompose extends Orchestrator
         }
     }
 
+    static public function cleaner ($path, $namespace, $policy, $dryRun = FALSE)
+    {
+        return self::rotateBackups ($path, $namespace, $policy, $dryRun);
+    }
+
     static public function reference ()
     {
         $buffer  = "https://docs.docker.com/compose/reference/ \n\n";

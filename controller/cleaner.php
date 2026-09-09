@@ -1,0 +1,81 @@
+<?php
+
+$_apps = $_data . DIRECTORY_SEPARATOR .'apps';
+
+$_dryRun = isset ($_flag) && trim ((string) $_flag) === '--dry-run';
+
+echo "INFO > Checking status of ". sizeof ($_builds) ." build(s) to CLEAN (rotate backups)... \n";
+
+if ($_dryRun) echo "INFO > Dry run: nothing will be deleted. \n";
+
+foreach ($_builds as $_build => $_b)
+{
+	// Em modo daemon só roda quando 'auto.cleaner' está explicitamente ligado (padrão: desligado).
+	// Em execução manual roda sempre, com a política do builds.json (se houver) ou a padrão.
+	$auto = isset ($_b->auto) && isset ($_b->auto->cleaner) ? $_b->auto->cleaner : FALSE;
+
+	$policy = Retention::policy ($auto);
+
+	if ($_daemon && $policy === FALSE) continue;
+
+	if ($policy === FALSE) $policy = Retention::DEFAULT_POLICY;
+
+	echo "\n";
+
+	echo "=== ". $_build ." === \n\n";
+
+	echo "INFO > Checking if build '". $_build ."' has has been deployed... \n";
+
+	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))
+	{
+		echo "ERROR > Invalid build name! \n\n";
+
+		continue;
+	}
+
+	$version = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app]) . DIRECTORY_SEPARATOR .'.version'. DIRECTORY_SEPARATOR . $_b->stage;
+
+	try
+	{
+		$_last = trim (file_get_contents ($version));
+	}
+	catch (Exception $e)
+	{
+		$_last = NULL;
+	}
+
+	if (!is_string ($_last) || $_last == '' || !self::score ($_b->stage, $_last))
+	{
+		echo "ERROR > No one valid version was deployed to this build! \n\n";
+
+		continue;
+	}
+
+	$clone = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app, $_last]);
+
+	if (!file_exists ($clone) || !is_dir ($clone))
+	{
+		echo "ERROR > The clone to version/tag '". $_last ."' is missing! \n\n";
+
+		continue;
+	}
+
+	echo "INFO > Rotating backups (keep last ". $policy ['daily'] ." daily, ". $policy ['weekly'] ." weekly and ". $policy ['monthly'] ." monthly)... \n";
+
+	// Usa o orquestrador direto do .env (validado em run.php), sem passar por
+	// Controller::singleton(): a rotação não deve depender da API do GitLab.
+	$orchestrator = getenv ('ORCHESTRATOR');
+
+	try
+	{
+		$result = $orchestrator::cleaner ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $policy, $_dryRun);
+	}
+	catch (Exception $e)
+	{
+		echo "ERROR > Impossibe to rotate backups of build. ". $e->getMessage () ."! \n\n";
+
+		continue;
+	}
+
+	echo "SUCCESS > All done! Build '". $_build ."': ". sizeof ($result ['keep']) ." backup(s) kept, ". sizeof ($result ['delete']) ." ". ($_dryRun ? 'would be deleted' : 'deleted') .". \n";
+}

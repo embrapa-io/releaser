@@ -546,6 +546,11 @@ class DockerSwarm extends Orchestrator
         self::buildAndRunCliService ('sanitize', $path, $name);
     }
 
+    static public function cleaner ($path, $name, $policy, $dryRun = FALSE)
+    {
+        return self::rotateBackups ($path, $name, $policy, $dryRun);
+    }
+
     static private function buildAndRunCliService ($service, $path, $prefix)
     {
         if (!in_array ($service, self::CLI_SERVICES))

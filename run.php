@@ -127,6 +127,17 @@ $_operations = [
 			'--all'
 		]
 	),
+	'cleaner' => new Operation (
+		'Rotate backups of builds (keep last 7 daily, 4 weekly and 3 monthly)',
+		'Controller::cleaner',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run]',
+		[
+			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
+			'--all',
+			'proj-b/web@release --dry-run'
+		]
+	),
 	'info' => new Operation (
 		'How to execute other util commands',
 		'Controller::info',
@@ -157,7 +168,7 @@ try
 
 	$_operation = trim ($aux [0]);
 
-	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize' ]) ? TRUE : FALSE;
+	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner' ]) ? TRUE : FALSE;
 }
 catch (Exception $e)
 {
@@ -204,7 +215,8 @@ $lockLifetime = intval (getenv ('LOCK_LIFETIME_MINUTES'));
 $lifetimes = [
 	'deploy' => $lockLifetime ? $lockLifetime : 4 * 60, // 4 hours (default)
 	'backup' => 7 * 24 * 60, // 1 week
-	'sanitize' => 15 * 24 * 60 // 15 days
+	'sanitize' => 15 * 24 * 60, // 15 days
+	'cleaner' => 12 * 60 // 12 hours
 ];
 
 $_lock = $_data . DIRECTORY_SEPARATOR .'.lock'. DIRECTORY_SEPARATOR . $_operation;
@@ -226,6 +238,7 @@ require_once 'helper/error.php';
 require_once 'class/GitLab.php';
 require_once 'class/GitClient.php';
 require_once 'class/Controller.php';
+require_once 'class/Retention.php';
 
 require_once 'plugin/DockerCompose.php';
 require_once 'plugin/DockerSwarm.php';

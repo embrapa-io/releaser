@@ -135,7 +135,8 @@ $_operations = [
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
-			'proj-b/web@release --dry-run'
+			'proj-b/web@release --dry-run',
+			'--dry-run'
 		]
 	),
 	'info' => new Operation (

@@ -142,6 +142,12 @@ class Controller
     {
         global $_daemon, $_data;
 
+        // `io cleaner --dry-run` (sem lista de builds) equivale a `--all --dry-run`
+        if (trim ((string) $slice) === '--dry-run') { $slice = '--all'; $flag = '--dry-run'; }
+
+        if ($flag !== NULL && trim ((string) $flag) !== '--dry-run')
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'cleaner' is '--dry-run'");
+
         $_builds = self::getBuilds ($_data, $slice);
 
         $_flag = $flag;

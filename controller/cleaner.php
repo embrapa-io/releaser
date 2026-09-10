@@ -89,13 +89,14 @@ if (sizeof ($_summary))
 
 	echo "INFO > Summary". ($_dryRun ? ' (dry run)' : '') .": \n";
 
-	$width = max (array_map ('strlen', array_keys ($_summary)));
-
 	foreach ($_summary as $build => $st)
-		echo "  ". str_pad ($build, $width + 2)
-			. str_pad ($st ['files_before'] ." -> ". $st ['files_after'] ." file(s)", 24)
-			. str_pad ($orchestrator::humanSize ($st ['bytes_before']) ." -> ". $orchestrator::humanSize ($st ['bytes_after']), 24)
-			. "freed ". $orchestrator::humanSize ($st ['bytes_deleted'])
-			. ($st ['foreign'] ? "  (". $st ['foreign'] ." file(s) of other builds untouched, ". $orchestrator::humanSize ($st ['bytes_foreign']) .")" : '')
-			. "\n";
+	{
+		echo "\n";
+		echo $build ."\n";
+		echo $st ['files_before'] ." -> ". $st ['files_after'] ." file(s)\n";
+		echo $orchestrator::humanSize ($st ['bytes_before']) ." -> ". $orchestrator::humanSize ($st ['bytes_after']) ."\n";
+		echo "freed ". $orchestrator::humanSize ($st ['bytes_deleted']) ."\n";
+	}
+
+	echo "\n";
 }

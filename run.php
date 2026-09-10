@@ -272,7 +272,7 @@ try
 
 	echo "\n";
 
-	echo "FINISH > All done after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
+	echo "FINISH > All done after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds! \n";
 
 	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', mailBody ());
 
@@ -289,7 +289,7 @@ catch (Exception $e)
 
 try
 {
-	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds!";
+	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds! \n";
 
 	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', mailBody ());
 }

@@ -71,6 +71,12 @@ foreach ($_builds as $_build => $_b)
 	{
 		$result = $orchestrator::cleaner ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $policy, $_dryRun);
 	}
+	catch (SkipException $e)
+	{
+		echo "WARNING > Nothing to do. ". $e->getMessage () .". Skipping this build. \n\n";
+
+		continue;
+	}
 	catch (Exception $e)
 	{
 		echo "ERROR > Impossibe to rotate backups of build. ". $e->getMessage () ."! \n\n";

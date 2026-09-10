@@ -332,6 +332,21 @@ class DockerCompose extends Orchestrator
             throw new Exception ('Error when trying to restart containers with Docker Compose');
     }
 
+    /**
+     * Lança SkipException se o serviço CLI não existir no docker-compose.yaml
+     * interpolado (apps de frontend, por exemplo, não têm 'backup' nem 'sanitize').
+     */
+    static private function requireCliService ($service)
+    {
+        exec (self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
+
+        if ($return !== 0)
+            throw new Exception ("Impossible to get services in 'docker-compose.yaml'");
+
+        if (!in_array ($service, array_map ('trim', $services)))
+            throw new SkipException ("Build has no '". $service ."' service in 'docker-compose.yaml'");
+    }
+
     static public function backup ($path, $namespace)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
@@ -342,6 +357,8 @@ class DockerCompose extends Orchestrator
         unset ($return);
 
         chdir ($path);
+
+        self::requireCliService ('backup');
 
         echo "INFO > Trying to execute backup service...\n";
 
@@ -378,6 +395,8 @@ class DockerCompose extends Orchestrator
         unset ($return);
 
         chdir ($path);
+
+        self::requireCliService ('sanitize');
 
         echo "INFO > Trying to execute sanitize service...\n";
 

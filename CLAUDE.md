@@ -24,6 +24,7 @@ Não há namespaces, autoload PSR-4, testes automatizados nem lint configurado. 
 ## Convenções
 
 - Estilo: `TRUE`/`FALSE`/`NULL` maiúsculos, espaço antes do parêntese de chamada (`foo ($bar)`), **tabs** em `controller/`, **4 espaços** em `class/` e `plugin/`.
+- `SkipException` (em `plugin/Orchestrator.php`): "não há o que fazer nesta build" (sem serviço `backup`/`sanitize`, sem volume de backup — comum em apps de frontend). Os controllers `backup`, `sanitize` e `cleaner` a capturam **antes** de `Exception` e imprimem `WARNING > Nothing to do…` (vai no e-mail do daemon, não é erro). Lançada por `DockerCompose::requireCliService`, `DockerSwarm::buildAndRunCliService` e `Orchestrator::backupVolume`.
 - Saída: `echo` com prefixos `INFO >`, `COMMAND >`, `WARNING >`, `ERROR >`, `SUCCESS >`, `CRITICAL >`, `FINISH >`. Erros por _build_ são `echo "ERROR > ..."; continue;` — só exceções não tratadas viram e-mail `CRITICAL`.
 - Versão: não há constante; vem do `--build-arg IO_RELEASER_VERSION` (formato `[0-9]+\.[0-9]{2}\.[0-9]+-[0-9]+`, ex. `1.26.9-1` = set/2026). Dev: `0.{aa}.{m}-dev.N`.
 - Lint mínimo antes de commitar: `for f in run.php class/*.php plugin/*.php controller/*.php helper/*.php; do php -l $f; done`.

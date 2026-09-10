@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * Sinaliza que não há o que fazer na build (ex.: app sem serviço 'backup' ou
+ * sem volume de backup — caso comum em apps de frontend). Os controllers
+ * tratam como WARNING (vai no e-mail do daemon), nunca como ERROR.
+ */
+class SkipException extends Exception {}
+
 abstract class Orchestrator
 {
     const SSH = '/usr/bin/ssh';
@@ -170,7 +177,7 @@ abstract class Orchestrator
         exec (static::DOCKER .' volume inspect '. escapeshellarg ($volume) .' > /dev/null 2>&1', $trash, $return);
 
         if ($return !== 0)
-            throw new Exception ("Backup volume '". $volume ."' not found");
+            throw new SkipException ("Backup volume '". $volume ."' not found (app has no 'backup' service?)");
 
         return $volume;
     }

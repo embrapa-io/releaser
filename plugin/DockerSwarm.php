@@ -564,7 +564,7 @@ class DockerSwarm extends Orchestrator
         chdir ($path);
 
         if (!file_exists ('.embrapa/swarm/cli/'. $service .'.yaml'))
-            throw new Exception ("File '.embrapa/swarm/cli/". $service .".yaml' not found");
+            throw new SkipException ("Build has no '.embrapa/swarm/cli/". $service .".yaml' file");
 
         echo "INFO > Checking if stack ". $prefix ." is deployed...\n";
 
@@ -587,8 +587,8 @@ class DockerSwarm extends Orchestrator
         if ($return !== 0)
             throw new Exception ("Impossible to get services in 'docker-compose.yaml'");
 
-        if (!in_array ($service, $services))
-            throw new Exception ("Service '". $service ."' not configured in 'docker-compose.yaml'");
+        if (!in_array ($service, array_map ('trim', $services)))
+            throw new SkipException ("Build has no '". $service ."' service in 'docker-compose.yaml'");
 
         $out = tempnam ('.embrapa', '_');
         $log = tempnam ('.embrapa', '_');

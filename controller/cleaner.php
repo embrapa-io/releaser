@@ -93,8 +93,8 @@ if (sizeof ($_summary))
 	{
 		echo "\n";
 		echo $build ."\n";
-		echo $st ['files_before'] ." -> ". $st ['files_after'] ." file(s)\n";
-		echo $orchestrator::humanSize ($st ['bytes_before']) ." -> ". $orchestrator::humanSize ($st ['bytes_after']) ."\n";
+		echo $st ['files_before'] ." → ". $st ['files_after'] ." file(s)\n";
+		echo $orchestrator::humanSize ($st ['bytes_before']) ." → ". $orchestrator::humanSize ($st ['bytes_after']) ."\n";
 		echo "freed ". $orchestrator::humanSize ($st ['bytes_deleted']) ."\n";
 	}
 

@@ -23,20 +23,36 @@ class Controller
 	{
         echo "INFO > Trying to load metadata info... \n";
 
-        $git = GitLab::singleton ();
+        // Os catálogos (boilerplates, clusters e orquestradores) vêm da rota pública
+        // do backend da plataforma, sem token. O repositório io/boilerplate/metadata
+        // deixou de ser público em 14/09/2026 e o token pessoal configurado no
+        // Releaser nem sempre o enxerga (ex.: usuário marcado como "external" no
+        // GitLab). O GitLab fica como fallback, para o caso de o backend estar fora.
+        try
+        {
+            $this->boilerplates = self::metadata ('boilerplates.json');
+            $this->clusters = self::metadata ('clusters.json');
+            $this->types = self::metadata ('orchestrators.json');
+        }
+        catch (Exception $e)
+        {
+            echo "WARNING > Impossible to load metadata from '". self::apiUrl () ."' (". $e->getMessage () ."). Falling back to GitLab... \n";
 
-        $load = $git->reposSearch ('io/boilerplate/metadata');
+            $git = GitLab::singleton ();
 
-        if (!sizeof ($load))
-            throw new Exception ("Repository 'io/boilerplate/metadata' not found!");
+            $load = $git->reposSearch ('io/boilerplate/metadata');
 
-        $metadata = $load [0];
+            if (!sizeof ($load))
+                throw new Exception ("Repository 'io/boilerplate/metadata' not found!");
 
-        $this->boilerplates = json_decode ($git->getFile ($metadata ['id'], 'boilerplates.json'));
+            $metadata = $load [0];
 
-        $this->clusters = json_decode ($git->getFile ($metadata ['id'], 'clusters.json'));
+            $this->boilerplates = json_decode ($git->getFile ($metadata ['id'], 'boilerplates.json'));
 
-        $this->types = json_decode ($git->getFile ($metadata ['id'], 'orchestrators.json'));
+            $this->clusters = json_decode ($git->getFile ($metadata ['id'], 'clusters.json'));
+
+            $this->types = json_decode ($git->getFile ($metadata ['id'], 'orchestrators.json'));
+        }
 
         if (!is_array ($this->boilerplates) || !is_object ($this->clusters) || !is_array ($this->types))
             throw new Exception ("Metadata files not loaded!");
@@ -72,6 +88,35 @@ class Controller
 
 		return self::$single;
 	}
+
+    // URL do backend da plataforma (rota /metadata/:file). Sobrescrevível pelo
+    // IO_API_URL do /data/.env — só faz sentido em instâncias fora do embrapa.io.
+    static private function apiUrl ()
+    {
+        $url = trim ((string) getenv ('IO_API_URL'));
+
+        return rtrim ($url !== '' ? $url : 'https://core.embrapa.io', '/');
+    }
+
+    // Baixa e decodifica um dos catálogos: boilerplates.json, clusters.json ou
+    // orchestrators.json. Timeouts curtos: se o backend não responder, o
+    // construtor cai no fallback pelo GitLab em vez de segurar o daemon.
+    static private function metadata ($file)
+    {
+        $client = new GuzzleHttp\Client ([
+            'connect_timeout' => 10,
+            'timeout' => 30
+        ]);
+
+        $response = $client->request ('GET', self::apiUrl () .'/metadata/'. $file);
+
+        $decoded = json_decode ((string) $response->getBody ());
+
+        if ($decoded === NULL)
+            throw new Exception ("Invalid JSON in '". $file ."'");
+
+        return $decoded;
+    }
 
     static public function validate ($slice)
     {

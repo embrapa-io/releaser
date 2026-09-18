@@ -79,7 +79,7 @@ if [ ! -f "/data/.env" ]; then
     do true; done
 
     read -p "SMTP user (e.g., you@gmail.com): " smtp_user
-    read -p "SMTP password: " smtp_password
+    read -p "SMTP password: " smtp_pass
 
     echo ""
 

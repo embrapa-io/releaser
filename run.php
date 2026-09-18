@@ -276,6 +276,8 @@ try
 
 	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', mailBody ());
 
+	if ($_daemon) Mail::singleton ()->flush (); // fila de e-mails que não saíram em execuções anteriores
+
 	exit (0);
 }
 catch (Exception $e)
@@ -292,6 +294,8 @@ try
 	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds! \n";
 
 	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', mailBody ());
+
+	if ($_daemon) Mail::singleton ()->flush ();
 }
 catch (Exception $e)
 {

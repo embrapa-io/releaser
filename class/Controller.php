@@ -214,8 +214,8 @@ class Controller
         $addresses = [];
 
         foreach (explode (',', $addrs) as $trash => $addr)
-            if (Mail::isValid ($addr))
-                $addresses [] = $addr;
+            if (Mail::isValid (trim ($addr)))
+                $addresses [] = trim ($addr);
 
         if (!sizeof ($addresses))
         {
@@ -224,18 +224,12 @@ class Controller
             return;
         }
 
-        echo "INFO > Sending e-mail messages to ". implode (', ', array_merge ([ getenv ('LOG_MAIL') ], $addresses)) ."... \n";
-
-        try
-        {
-            Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - E-MAIL TEST', "It's ok!", $addresses);
-
-            echo "SUCCESS > Sended! \n";
-        }
-        catch (Exception $e)
-        {
-            echo "ERROR > ". $e->getMessage () ."! \n";
-        }
+        // Mail::send() nunca lança exceção (falha vira WARNING e fila): o teste
+        // usa test(), que devolve o resultado real do envio.
+        if (Mail::singleton ()->test ('Releaser at '. getenv ('SERVER') .' - E-MAIL TEST', "It's ok!", $addresses))
+            echo "SUCCESS > Sent! \n";
+        else
+            echo "ERROR > The test e-mail could not be sent! See the SMTP attempts above. \n";
     }
 
     static protected function score ($stage, $version)

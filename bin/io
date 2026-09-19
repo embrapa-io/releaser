@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Alguns hosts entregam o container com umask 0000 (n8n.embrapa.io, set/2026):
+# arquivos nasciam com modo 666 e o OpenSSH recusava o ~/.ssh/config
+# ("Bad owner or permissions"), derrubando o clone de todo deploy.
+umask 022
+
 echo ""
 
 echo "A command line utility to help deploy and update Embrapa I/O apps."
@@ -166,6 +171,11 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
 
   echo "Note: SSH key pair is available on the volume directory shared with the container."
 fi
+
+# Autocorreção a cada execução: containers criados com umask 0000 por versões
+# anteriores ficaram com ~/.ssh/config em 666, que o OpenSSH recusa.
+chmod 700 /root/.ssh 2> /dev/null
+chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 
 if [ ! -f "/data/builds.json" ]; then
   echo ""

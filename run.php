@@ -11,6 +11,7 @@
  */
 
 error_reporting (E_ALL);
+umask (0022); // hosts com umask 0000 criavam .env das apps e fila de e-mails com modo 666
 set_time_limit (0);
 ini_set ('memory_limit', '-1');
 ini_set ('register_argc_argv', '1');

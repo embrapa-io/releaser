@@ -58,7 +58,7 @@ class GitLab
 
         foreach ($team as $trash => $member)
         {
-            if ($member['username'] == 'root' || $member['state'] != 'active') continue;
+            if ($member['id'] == 1 || $member['state'] != 'active') continue;
 
             $u = $this->client->users ()->show ($member['id']);
 

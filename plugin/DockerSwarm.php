@@ -425,7 +425,7 @@ class DockerSwarm extends Orchestrator
 
         echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
-        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>&1', $services, $return);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
 
         $cli = self::CLI_SERVICES;
 
@@ -582,7 +582,7 @@ class DockerSwarm extends Orchestrator
 
         echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
-        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>&1', $services, $return);
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
 
         if ($return !== 0)
             throw new Exception ("Impossible to get services in 'docker-compose.yaml'");

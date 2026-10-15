@@ -65,12 +65,26 @@ foreach ($_builds as $_build => $_b)
 		echo "\n";
 	}
 
-	$items [] = [
+	$item = [
 		'project' => $_b->project,
 		'app' => $_b->app,
 		'stage' => $_b->stage,
 		'services' => $services
 	];
+
+	// A versão implantada vai junto (lida do .version da build): assim o estágio aparece
+	// no Dashboard já na primeira rodada, sem esperar o próximo deploy. O core só
+	// registra quando ela muda.
+	if ($stats->version)
+	{
+		$file = $_data . DIRECTORY_SEPARATOR .'apps'. DIRECTORY_SEPARATOR . $_b->project . DIRECTORY_SEPARATOR . $_b->app . DIRECTORY_SEPARATOR .'.version'. DIRECTORY_SEPARATOR . $_b->stage;
+
+		$deployed = file_exists ($file) ? trim ((string) @file_get_contents ($file)) : '';
+
+		if ($deployed !== '' && self::score ($_b->stage, $deployed)) $item ['version'] = $deployed;
+	}
+
+	$items [] = $item;
 }
 
 if (!sizeof ($items))

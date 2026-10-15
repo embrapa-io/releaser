@@ -81,6 +81,9 @@ function sentryOutput ($chunk, $phase)
         $level = $m [1];
         $message = trim ($m [2]);
 
+        // modo silencioso (health:daemon, a cada minuto): só o que merece atenção
+        if (!empty ($GLOBALS ['_sentryQuiet']) && !in_array ($level, [ 'WARNING', 'ERROR', 'CRITICAL' ])) continue;
+
         $attributes = [ 'operation' => (string) ($GLOBALS ['_operation'] ?? ''), 'mode' => !empty ($GLOBALS ['_daemon']) ? 'daemon' : 'cli', 'prefix' => $level ];
 
         if ($build !== NULL && preg_match ('#^([^/]+)/([^@]+)@(\w+)$#', $build, $b))

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+umask 022
+
+if [ ! -f "/data/.env" ]; then
+  exit 1
+fi
+
+export $(cat /data/.env)
+
+/usr/local/bin/php /app/run.php health:daemon --all >> /dev/null 2>&1

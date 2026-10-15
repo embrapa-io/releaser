@@ -322,6 +322,14 @@ foreach ($_builds as $_build => $_b)
 	catch (Exception $e)
 	{}
 
+	// Versão implantada vai para o core (chip do estágio no Dashboard); nunca aborta o deploy.
+	if (self::stats ($_b)->version)
+	{
+		echo "INFO > Reporting the deployed version to the core... \n";
+
+		Report::send ([ [ 'project' => $_b->project, 'app' => $_b->app, 'stage' => $_b->stage, 'version' => $_newer ['name'] ] ]);
+	}
+
 	echo "SUCCESS > All done! Version '". $_newer ['name'] ."' in '". $_b->stage ."' stage of application '". $_b->project ."/". $_b->app ."' is DEPLOYED! \n";
 
 	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS', mailBody (), $_b->team);

@@ -5,6 +5,10 @@ class DockerCompose extends Orchestrator
     const DOCKER = '/usr/bin/docker';
     const DOCKER_COMPOSE = '/usr/bin/docker-compose';
 
+    // rótulos que o Compose grava nos containers (ver Orchestrator::containers)
+    const STACK_LABEL = 'com.docker.compose.project';
+    const SERVICE_LABEL = 'com.docker.compose.service';
+
     static public function validate ($path, $namespace)
     {
         return self::checkDockerComposeFile ($path, $namespace);

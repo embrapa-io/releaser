@@ -91,7 +91,7 @@ class Controller
 
     // URL do backend da plataforma (rota /metadata/:file). Sobrescrevível pelo
     // IO_API_URL do /data/.env — só faz sentido em instâncias fora do embrapa.io.
-    static private function apiUrl ()
+    static public function apiUrl ()
     {
         $url = trim ((string) getenv ('IO_API_URL'));
 
@@ -209,6 +209,68 @@ class Controller
         require self::PATH .'info.php';
     }
 
+    static public function health ($slice)
+    {
+        global $_daemon, $_data;
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        require self::PATH .'health.php';
+    }
+
+    static public function cve ($slice)
+    {
+        global $_daemon, $_data;
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        require self::PATH .'cve.php';
+    }
+
+    static public function install ($target = '', $flag = '')
+    {
+        global $_data;
+
+        // `io install --yes` (sem build) e `io install proj/app@stage --yes`
+        if (trim ((string) $target) === '--yes') { $flag = '--yes'; $target = ''; }
+
+        if ($flag !== '' && trim ((string) $flag) !== '--yes')
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'install' is '--yes'");
+
+        $_target = trim ((string) $target);
+        $_yes = trim ((string) $flag) === '--yes';
+
+        require self::PATH .'install.php';
+    }
+
+    static public function split ()
+    {
+        global $_data;
+
+        require self::PATH .'split.php';
+    }
+
+    /**
+     * O que a build reporta ao core (atributo `stats` do arquivo da build):
+     * { version, cve, health }, TODOS verdadeiros por padrão, inclusive quando
+     * ausentes; `"stats": false` desliga os três. Lido só pelo Releaser.
+     */
+    static public function stats ($b)
+    {
+        $all = [ 'version' => TRUE, 'cve' => TRUE, 'health' => TRUE ];
+
+        if (!isset ($b->stats)) return (object) $all;
+
+        if ($b->stats === FALSE) return (object) array_fill_keys (array_keys ($all), FALSE);
+
+        if (!is_object ($b->stats)) return (object) $all;
+
+        foreach ($all as $key => $trash)
+            if (isset ($b->stats->$key) && $b->stats->$key === FALSE) $all [$key] = FALSE;
+
+        return (object) $all;
+    }
+
     static public function mail ($addrs)
     {
         $addresses = [];
@@ -247,39 +309,118 @@ class Controller
         return (int) $matches [1] . $matches [2] . str_pad ($matches [3], 2, '0', STR_PAD_LEFT) . str_pad ($matches [4], 4, '0', STR_PAD_LEFT);
     }
 
-    static protected function getBuilds ($data, $input)
+    /**
+     * Carrega as builds configuradas: o legado /data/builds.json (todas num
+     * arquivo) e/ou /data/builds/<projeto>_<app>_<estágio>.json (um por build;
+     * qualquer outra extensão, como .bkp, é ignorada = build desativada). O nome
+     * do arquivo precisa bater com o conteúdo, e a mesma build em dois lugares é
+     * erro — nunca precedência silenciosa. Cada build ganha `_file` (origem).
+     */
+    static public function loadBuilds ($data)
     {
-        $builds = $data . DIRECTORY_SEPARATOR .'builds.json';
+        $legacy = $data . DIRECTORY_SEPARATOR .'builds.json';
 
-        if (!file_exists ($builds) || !is_readable ($builds))
-            throw new Exception ("Is needed configure builds of apps to deploy in file '". $builds ."'!");
+        $dir = $data . DIRECTORY_SEPARATOR .'builds';
 
-        $_builds = [];
+        $builds = [];
 
-        $loaded = json_decode (file_get_contents ($builds));
+        $sources = [];
 
-        if (!is_array ($loaded) || !sizeof ($loaded))
-            throw new Exception ("No builds configured (or malformed JSON) in file '". $builds ."'!");
-
-        $slice = explode (',', $input);
-
-        $all = sizeof ($slice) == 1 && trim ($slice [0]) == '--all' ? TRUE : FALSE;
-
-        foreach ($loaded as $trash => $b)
+        if (file_exists ($legacy))
         {
-            $build  = $b->project .'/'. $b->app .'@'. $b->stage;
+            if (!is_readable ($legacy))
+                throw new Exception ("File '". $legacy ."' is not readable!");
 
-            if ($all || in_array ($build, $slice))
+            $loaded = json_decode ((string) file_get_contents ($legacy));
+
+            if (!is_array ($loaded))
+                throw new Exception ("Malformed JSON in file '". $legacy ."'!");
+
+            foreach ($loaded as $i => $b)
             {
-                if (array_key_exists ($build, $_builds))
-                    throw new Exception ("The build '". $build ."' was configured twice!");
+                if (!is_object ($b) || !isset ($b->project, $b->app, $b->stage))
+                    throw new Exception ("Entry #". ($i + 1) ." of '". $legacy ."' has no project, app or stage!");
 
-                $_builds [$build] = $b;
+                $build = $b->project .'/'. $b->app .'@'. $b->stage;
+
+                if (array_key_exists ($build, $builds))
+                    throw new Exception ("The build '". $build ."' was configured twice in '". $legacy ."'!");
+
+                $b->_file = $legacy;
+
+                $builds [$build] = $b;
             }
         }
 
+        if (file_exists ($dir) && is_dir ($dir))
+        {
+            $files = glob ($dir . DIRECTORY_SEPARATOR .'*.json') ?: [];
+
+            sort ($files);
+
+            foreach ($files as $file)
+            {
+                $b = json_decode ((string) file_get_contents ($file));
+
+                if (!is_object ($b) || !isset ($b->project, $b->app, $b->stage))
+                    throw new Exception ("File '". $file ."' is not a valid build (malformed JSON or missing project/app/stage)!");
+
+                $expected = $b->project .'_'. $b->app .'_'. $b->stage .'.json';
+
+                if (basename ($file) !== $expected)
+                    throw new Exception ("File '". $file ."' must be named '". $expected ."' (project_app_stage.json) to match its content!");
+
+                $build = $b->project .'/'. $b->app .'@'. $b->stage;
+
+                if (array_key_exists ($build, $builds))
+                    throw new Exception ("The build '". $build ."' is configured twice: in '". $builds [$build]->_file ."' and in '". $file ."'!");
+
+                $b->_file = $file;
+
+                $builds [$build] = $b;
+            }
+        }
+
+        if (!file_exists ($legacy) && !(file_exists ($dir) && is_dir ($dir)))
+            throw new Exception ("Is needed configure builds of apps to deploy: one file per build in '". $dir ."' (or the legacy '". $legacy ."')!");
+
+        return $builds;
+    }
+
+    /** Builds desativadas: arquivos em /data/builds que não terminam em .json (ex.: .bkp). */
+    static public function disabledBuilds ($data)
+    {
+        $dir = $data . DIRECTORY_SEPARATOR .'builds';
+
+        if (!file_exists ($dir) || !is_dir ($dir)) return [];
+
+        $disabled = [];
+
+        foreach (scandir ($dir) ?: [] as $entry)
+            if ($entry [0] !== '.' && is_file ($dir . DIRECTORY_SEPARATOR . $entry) && !preg_match ('/\.json$/', $entry)) $disabled [] = $entry;
+
+        return $disabled;
+    }
+
+    static protected function getBuilds ($data, $input)
+    {
+        $loaded = self::loadBuilds ($data);
+
+        if (!sizeof ($loaded))
+            throw new Exception ("No builds configured! Add one file per build in '". $data . DIRECTORY_SEPARATOR ."builds/' (see 'io install').");
+
+        $_builds = [];
+
+        $slice = array_map ('trim', explode (',', (string) $input));
+
+        $all = sizeof ($slice) == 1 && $slice [0] == '--all' ? TRUE : FALSE;
+
+        foreach ($loaded as $build => $b)
+            if ($all || in_array ($build, $slice))
+                $_builds [$build] = $b;
+
         if (!sizeof ($_builds))
-            throw new Exception ("No builds to deploy! Check settings file (apps/builds.json).");
+            throw new Exception ("No builds to process! Check the builds configured in '". $data . DIRECTORY_SEPARATOR ."builds/' (and the legacy builds.json).");
 
         return $_builds;
     }

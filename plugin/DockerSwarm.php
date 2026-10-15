@@ -33,6 +33,10 @@ docker stack rm agroapp_portal_alpha_backup && docker stack deploy -c .embrapa/s
 
 class DockerSwarm extends Orchestrator
 {
+    // rótulos que o Swarm grava nos containers (ver Orchestrator::containers)
+    const STACK_LABEL = 'com.docker.stack.namespace';
+    const SERVICE_LABEL = 'com.docker.swarm.service.name';
+
     const DOCKER = '/usr/bin/docker';
     const DOCKER_COMPOSE = '/usr/bin/docker-compose';
 

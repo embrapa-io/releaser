@@ -140,6 +140,44 @@ $_operations = [
 			'--dry-run'
 		]
 	),
+	'health' => new Operation (
+		'Report the health of the services of builds to the platform (core)',
+		'Controller::health',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
+		[
+			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
+			'--all'
+		]
+	),
+	'cve' => new Operation (
+		'Scan running images for CVEs (Trivy) and report them to the platform (core)',
+		'Controller::cve',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
+		[
+			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
+			'--all'
+		]
+	),
+	'install' => new Operation (
+		'Guided setup of a new build (creates builds/<project>_<app>_<stage>.json)',
+		'Controller::install',
+		0,
+		'[BUILD] [--yes]',
+		[
+			'',
+			'proj-a/app-1@beta',
+			'proj-a/app-1@beta --yes'
+		]
+	),
+	'split' => new Operation (
+		'Migrate the legacy builds.json to one file per build in builds/',
+		'Controller::split',
+		0,
+		'',
+		[]
+	),
 	'info' => new Operation (
 		'How to execute other util commands',
 		'Controller::info',
@@ -170,7 +208,7 @@ try
 
 	$_operation = trim ($aux [0]);
 
-	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner' ]) ? TRUE : FALSE;
+	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'health', 'cve' ]) ? TRUE : FALSE;
 }
 catch (Exception $e)
 {
@@ -218,8 +256,14 @@ $lifetimes = [
 	'deploy' => $lockLifetime ? $lockLifetime : 4 * 60, // 4 hours (default)
 	'backup' => 7 * 24 * 60, // 1 week
 	'sanitize' => 15 * 24 * 60, // 15 days
-	'cleaner' => 12 * 60 // 12 hours
+	'cleaner' => 12 * 60, // 12 hours
+	'health' => 10, // 10 minutes (roda a cada minuto)
+	'cve' => 3 * 60 // 3 hours (roda a cada hora)
 ];
+
+// O health check roda a cada minuto: no daemon, só WARNING/ERROR/CRITICAL
+// viram log no Sentry (helper/sentry.php), senão seriam milhares de INFO por dia.
+$_sentryQuiet = $_daemon && $_operation === 'health';
 
 $_lock = $_data . DIRECTORY_SEPARATOR .'.lock'. DIRECTORY_SEPARATOR . $_operation;
 
@@ -243,6 +287,8 @@ require_once 'class/GitLab.php';
 require_once 'class/GitClient.php';
 require_once 'class/Controller.php';
 require_once 'class/Retention.php';
+require_once 'class/Report.php';
+require_once 'class/Trivy.php';
 
 require_once 'plugin/DockerCompose.php';
 require_once 'plugin/DockerSwarm.php';

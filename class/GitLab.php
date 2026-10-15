@@ -68,6 +68,54 @@ class GitLab
         return $users;
     }
 
+    /** Grupos de primeiro nível em que o dono do token é pelo menos Developer (projetos da plataforma). */
+    public function userGroups ()
+    {
+        $groups = [];
+
+        $page = 1;
+
+        do
+        {
+            $result = $this->client->groups ()->all ([
+                'min_access_level' => 30,
+                'top_level_only' => TRUE,
+                'order_by' => 'name',
+                'sort' => 'asc',
+                'per_page' => 100,
+                'page' => $page++
+            ]);
+
+            foreach ($result as $trash => $group) $groups [$group ['id']] = $group;
+        } while (count ($result) > 0 && $page <= 20);
+
+        return $groups;
+    }
+
+    /** Repositórios (apps) de um grupo, sem os arquivados. */
+    public function groupProjects ($id)
+    {
+        $projects = [];
+
+        $page = 1;
+
+        do
+        {
+            $result = $this->client->groups ()->projects ($id, [
+                'archived' => FALSE,
+                'simple' => TRUE,
+                'order_by' => 'name',
+                'sort' => 'asc',
+                'per_page' => 100,
+                'page' => $page++
+            ]);
+
+            foreach ($result as $trash => $project) $projects [$project ['id']] = $project;
+        } while (count ($result) > 0 && $page <= 20);
+
+        return $projects;
+    }
+
     public function projectMilestones ($id)
     {
         return $this->client->groupsMilestones ()->all ($id);

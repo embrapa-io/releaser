@@ -15,6 +15,23 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	echo "=== ". $_build ." === \n";
+
+	echo "Configured in: ". (isset ($_b->_file) ? str_replace ($_data . DIRECTORY_SEPARATOR, '', $_b->_file) : '?') ." \n";
+
+	$stats = self::stats ($_b);
+
+	$report = Report::last ($_b->project, $_b->app, $_b->stage);
+
+	foreach ([ 'version', 'health', 'cve' ] as $signal)
+	{
+		if (!$stats->$signal) { echo "Report of ". $signal .": disabled (stats.". $signal ." = false) \n"; continue; }
+
+		if (!isset ($report [$signal])) { echo "Report of ". $signal .": never sent to the core \n"; continue; }
+
+		echo "Report of ". $signal .": ". ($report [$signal]['status'] === 200 ? 'accepted' : 'REFUSED ('. $report [$signal]['status'] .': '. $report [$signal]['reason'] .')') ." at ". $report [$signal]['at'] ." \n";
+	}
+
 	$version = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app]) . DIRECTORY_SEPARATOR .'.version'. DIRECTORY_SEPARATOR . $_b->stage;
 
 	try
@@ -72,6 +89,17 @@ foreach ($_builds as $_build => $_b)
 	echo "cd ". $clone ." \n";
 
 	if ($isRollbacked) echo "Important! This version has rollbacked from version ". $_last .". \n";
+}
+
+$disabled = self::disabledBuilds ($_data);
+
+if (sizeof ($disabled))
+{
+	echo "\n";
+
+	echo "Disabled builds (files in 'builds/' without the .json extension): \n";
+
+	foreach ($disabled as $entry) echo "  builds/". $entry ."\n";
 }
 
 echo "\n";

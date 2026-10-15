@@ -45,6 +45,72 @@ abstract class Orchestrator
     abstract public static function reference ();
 
     /**
+     * Containers da build neste host, pelo rótulo da stack (Compose: projeto;
+     * Swarm: namespace), no formato que o deployer da plataforma usa no health
+     * check: serviço => [image, state, status, healthy, size, created, running].
+     * Serviços de linha de comando (CLI_SERVICES) ficam de fora. Com réplicas,
+     * vale o container em execução (ou o primeiro).
+     */
+    public static function containers ($namespace)
+    {
+        $format = '{{.Label "'. static::SERVICE_LABEL .'"}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Size}}|{{.CreatedAt}}|{{.RunningFor}}';
+
+        $cmd = static::DOCKER .' ps -a --filter '. escapeshellarg ('label='. static::STACK_LABEL .'='. $namespace) .' --format '. escapeshellarg ($format);
+
+        exec ($cmd .' 2>&1', $output, $return);
+
+        if ($return !== 0)
+            throw new Exception ("Error on Docker command: ". implode (' ', $output));
+
+        $services = [];
+
+        foreach ($output as $line)
+        {
+            $parts = explode ('|', $line);
+
+            if (sizeof ($parts) !== 7) continue;
+
+            $service = trim ($parts [0]);
+
+            // no Swarm o rótulo do serviço é '<namespace>_<serviço>'
+            if (strpos ($service, $namespace .'_') === 0) $service = substr ($service, strlen ($namespace) + 1);
+
+            if ($service === '' || in_array ($service, self::CLI_SERVICES)) continue;
+
+            $state = trim ($parts [2]);
+
+            if (array_key_exists ($service, $services) && ($services [$service]['state'] === 'running' || $state !== 'running')) continue;
+
+            preg_match ('/^[^\(]+\(([^\)]+)\)$/', trim ($parts [3]), $h);
+
+            preg_match ('/^[^\(]+\(virtual ([^\)]+)\)$/', trim ($parts [4]), $s);
+
+            try
+            {
+                $created = (new DateTime (trim ($parts [5])))->setTimezone (new DateTimeZone ('America/Sao_Paulo'))->format ('j/n/y G:i');
+            }
+            catch (Exception $e)
+            {
+                $created = trim ($parts [5]);
+            }
+
+            $services [$service] = [
+                'image' => trim ($parts [1]),
+                'state' => $state,
+                'status' => trim ($parts [3]),
+                'healthy' => sizeof ($h) == 2 ? $h [1] : 'undefined',
+                'size' => sizeof ($s) == 2 ? $s [1] : trim ($parts [4]),
+                'created' => $created,
+                'running' => trim ($parts [6])
+            ];
+        }
+
+        ksort ($services);
+
+        return $services;
+    }
+
+    /**
      * Rotaciona os arquivos do volume externo de backup da build, aplicando a
      * política de retenção (ver Retention). Compartilhado pelos orquestradores:
      * o volume é acessado diretamente pelo Docker (docker run -v), sem depender

@@ -177,10 +177,10 @@ fi
 chmod 700 /root/.ssh 2> /dev/null
 chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 
-if [ ! -f "/data/builds.json" ]; then
+if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
   echo ""
 
-  echo "Warning! The builds are not configured yet (file 'builds.json' is missing)."
+  echo "Warning! The builds are not configured yet (directory 'builds/' is missing)."
 
   echo ""
 
@@ -215,6 +215,15 @@ if [ ! -f "/data/builds.json" ]; then
     --argjson cleaner false \
     '$ARGS.named')
 
+  # O que a build reporta ao core (versão, saúde e CVEs): tudo ligado por padrão.
+  stats=$(jq -n \
+    --argjson version true \
+    --argjson cve true \
+    --argjson health true \
+    '$ARGS.named')
+
+  mkdir -p /data/builds
+
   for build in $builds
   do
     if [[ ! $build =~ [[:space:]]*([a-z0-9][a-z0-9-]+[a-z0-9])\/([a-z0-9][a-z0-9-]+[a-z0-9])@((alpha)|(beta)|(release))[[:space:]]* ]]; then
@@ -223,7 +232,8 @@ if [ ! -f "/data/builds.json" ]; then
       continue
     fi
 
-    array[$count]=$(jq -n \
+    # um arquivo por build: /data/builds/<projeto>_<app>_<estágio>.json
+    jq -n \
       --arg project ${BASH_REMATCH[1]} \
       --arg app ${BASH_REMATCH[2]} \
       --arg stage ${BASH_REMATCH[3]} \
@@ -231,27 +241,22 @@ if [ ! -f "/data/builds.json" ]; then
       --argjson sentry "$sentry" \
       --argjson matomo "$matomo" \
       --argjson auto "$auto" \
+      --argjson stats "$stats" \
       --argjson env "{}" \
-      '$ARGS.named')
+      '$ARGS.named' > "/data/builds/${BASH_REMATCH[1]}_${BASH_REMATCH[2]}_${BASH_REMATCH[3]}.json"
 
     ((count++))
   done
 
-  if (( ${#array[@]} == 0 )); then
-    echo "Warning! No one build could be configured. Try again or manually create the 'builds.json' file in the volume directory shared with the container."
+  if (( count == 0 )); then
+    echo "Warning! No one build could be configured. Try again or run 'io install' for a guided setup."
 
     exit 1
   fi
 
-  concat=$(IFS=","; echo "${array[*]}")
-
-  final=$(echo "[$concat]" | jq -s '.[]')
-
-  echo "$final" > /data/builds.json
-
-  echo "Done! 'builds.json' file has been created in volume directory shared with the container."
-  echo "Now, you need to complete this file with e-mails of your team members, Sentry DSN and Matomo ID/Token, for each build."
-  echo "Furthermore, you need to configure '.env' file for each build in 'settings' folder, inside volume directory."
+  echo "Done! $count build file(s) created in 'builds/' inside the volume directory shared with the container."
+  echo "Now, complete each file with the e-mails of your team members, the Sentry DSN, the Matomo ID/token and the environment variables ('env')."
+  echo "Tip: 'io install' does all of that for you, guided, fetching from the platform what only the platform knows."
 fi
 
 echo ""

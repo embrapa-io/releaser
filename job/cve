@@ -1,0 +1,19 @@
+#!/bin/sh
+
+umask 022
+
+if [ ! -f "/data/.env" ]; then
+  echo "$(date) - $(realpath $0) - ERROR: /data/.env file not found" >> /var/log/daemon.log
+
+  exit 1
+fi
+
+echo "$(date) - $(realpath $0)" >> /var/log/daemon.log
+
+export $(cat /data/.env)
+
+# Minuto sorteado por host (a partir do nome do servidor), para os Releasers
+# não baterem no core e no ghcr.io todos na virada da hora: até 40 minutos.
+sleep $(/usr/local/bin/php -r 'echo crc32 ((string) getenv ("SERVER")) % 2400;')
+
+/usr/local/bin/php /app/run.php cve:daemon --all >> /dev/null 2>&1

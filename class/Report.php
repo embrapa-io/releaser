@@ -76,6 +76,18 @@ class Report
         // helper/error.php transforma em exceção.
         $json = json_encode ($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        // No daemon de cada minuto ($quiet), um problema persistente (core fora, token
+        // inválido, 409) só é avisado quando muda: senão seriam 1.440 WARNINGs por dia
+        // no Sentry. O estado anterior fica em /data/.report/<build>.json.
+        $warn = function ($build, array $keys, $status, $reason, $message) use ($quiet)
+        {
+            $changed = !$quiet || self::changed ($build, $keys, $status, $reason);
+
+            self::remember ($build, $keys, $status, $reason);
+
+            if ($changed) echo "WARNING > ". $message ." \n";
+        };
+
         try
         {
             $response = self::client ()->request ('POST', 'releaser/report', [
@@ -85,9 +97,16 @@ class Report
         }
         catch (Exception $e)
         {
-            echo "WARNING > Impossible to report to '". Controller::apiUrl () ."': ". $e->getMessage () ." \n";
+            $reason = 'sem conexão com o core: '. $e->getMessage ();
 
-            foreach ($sent as $build => $keys) self::remember ($build, $keys, 0, 'sem conexão com o core: '. $e->getMessage ());
+            $first = TRUE;
+
+            foreach ($sent as $build => $keys)
+            {
+                $warn ($build, $keys, 0, $reason, $first ? "Impossible to report to '". Controller::apiUrl () ."': ". $e->getMessage () : '');
+
+                $first = FALSE;
+            }
 
             return FALSE;
         }
@@ -100,9 +119,14 @@ class Report
         {
             $reason = self::reason ($status, $data);
 
-            echo "WARNING > The core refused the report (HTTP ". $status ."): ". $reason ." \n";
+            $first = TRUE;
 
-            foreach ($sent as $build => $keys) self::remember ($build, $keys, $status, $reason);
+            foreach ($sent as $build => $keys)
+            {
+                $warn ($build, $keys, $status, $reason, $first ? "The core refused the report (HTTP ". $status ."): ". $reason : '');
+
+                $first = FALSE;
+            }
 
             return FALSE;
         }
@@ -127,12 +151,24 @@ class Report
             // o core devolve 'p/a/s' nas recusas de campo inválido; normaliza para 'p/a@s'
             if (preg_match ('#^([^/]+)/([^/]+)/([^/]+)$#', $build, $m)) $build = $m [1] .'/'. $m [2] .'@'. $m [3];
 
-            echo "WARNING > The core rejected ". $build ." (". (int) ($r->code ?? 0) ."): ". (string) ($r->reason ?? '') . (isset ($r->info) ? ' ['. $r->info .']' : '') ." \n";
-
-            self::remember ($build, $sent [$build] ?? [], (int) ($r->code ?? 0), (string) ($r->reason ?? ''));
+            $warn ($build, $sent [$build] ?? [], (int) ($r->code ?? 0), (string) ($r->reason ?? ''),
+                "The core rejected ". $build ." (". (int) ($r->code ?? 0) ."): ". (string) ($r->reason ?? '') . (isset ($r->info) ? ' ['. $r->info .']' : ''));
         }
 
         return $ok;
+    }
+
+    /** O resultado (status + motivo) de algum dos sinais da build mudou em relação ao último registrado? */
+    static private function changed ($build, array $keys, $status, $reason)
+    {
+        if (!preg_match ('#^([a-z0-9-]+)/([a-z0-9-]+)@(alpha|beta|release)$#', $build, $m)) return TRUE;
+
+        $last = self::last ($m [1], $m [2], $m [3]);
+
+        foreach ($keys as $key)
+            if (!isset ($last [$key]) || (int) $last [$key]['status'] !== (int) $status || (string) $last [$key]['reason'] !== (string) $reason) return TRUE;
+
+        return FALSE;
     }
 
     /**

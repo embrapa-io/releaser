@@ -222,6 +222,12 @@ class DockerCompose extends Orchestrator
 
         foreach ($config ['services'] as $name => $service)
         {
+            // Nome fixo de contêiner colide com outro de mesmo nome no servidor (o servidor da equipe costuma hospedar
+            // várias apps): o segundo deploy falha com "container name already in use". Mesmo aviso do deployer da
+            // plataforma; vira erro numa versão futura.
+            if (array_key_exists ('container_name', $service))
+                echo "WARNING > Service '". $name ."' sets 'container_name' ('". $service ['container_name'] ."'). Remove it: a fixed name collides with any other container with the same name on this server (another app, stage or project). It will become an ERROR in a future version. \n";
+
             if (isset ($service ['ports']))
                 foreach ($service ['ports'] as $trash => $port)
                 {

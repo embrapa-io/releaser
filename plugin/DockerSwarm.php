@@ -452,8 +452,9 @@ class DockerSwarm extends Orchestrator
         return TRUE;
     }
 
-    static public function stop ($path, $name)
+    static public function stop ($path, $name, $down = FALSE)
     {
+        // No Swarm, `stack rm` já remove os serviços (equivale ao `--down`); os volumes ficam.
         chdir ($path);
 
         echo "INFO > Checking if stack ". $name ." is deployed...\n";

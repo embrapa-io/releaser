@@ -296,7 +296,7 @@ class DockerCompose extends Orchestrator
         return TRUE;
     }
 
-    static public function stop ($path, $namespace)
+    static public function stop ($path, $namespace, $down = FALSE)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -307,11 +307,15 @@ class DockerCompose extends Orchestrator
 
         chdir ($path);
 
-        echo "INFO > Stopping application with Docker Compose... \n";
+        // `--down` remove os containers (e a rede padrão do Compose, se houver), sem `-v`: os volumes nomeados e os
+        // externos da build ficam intactos. Útil para recriar a stack do zero (mudança de porta, de rede etc.).
+        $action = $down ? 'down --remove-orphans' : 'stop';
 
-        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' stop'."\n";
+        echo "INFO > ". ($down ? "Removing containers (volumes are kept)" : "Stopping application") ." with Docker Compose... \n";
 
-        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' stop 2>&1', $output, $return);
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' '. $action ."\n";
+
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' '. $action .' 2>&1', $output, $return);
 
         if (sizeof ($output)) echo implode ("\n", $output) ."\n";
 

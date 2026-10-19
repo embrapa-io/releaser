@@ -82,13 +82,14 @@ $_operations = [
 		]
 	),
 	'stop' => new Operation (
-		'Stop running builds',
+		'Stop running builds (--down removes the containers; volumes are kept)',
 		'Controller::stop',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--down]',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
-			'--all'
+			'--all',
+			'proj-b/web@release --down'
 		]
 	),
 	'restart' => new Operation (

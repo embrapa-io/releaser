@@ -37,7 +37,7 @@ abstract class Orchestrator
 
     abstract public static function validate ($path, $namespace);
     abstract public static function deploy ($path, $namespace);
-    abstract public static function stop ($path, $namespace);
+    abstract public static function stop ($path, $namespace, $down = FALSE);
     abstract public static function restart ($path, $namespace);
     abstract public static function backup ($path, $namespace);
     abstract public static function sanitize ($path, $namespace);

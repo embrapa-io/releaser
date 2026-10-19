@@ -147,9 +147,15 @@ class Controller
         require self::PATH .'rollback.php';
     }
 
-    static public function stop ($slice)
+    static public function stop ($slice, $flag = NULL)
     {
         global $_data;
+
+        // `--down`: remove os containers da stack (docker compose down), não só os para; volumes ficam
+        if ($flag !== NULL && trim ((string) $flag) !== '--down')
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'stop' is '--down'");
+
+        $_down = $flag !== NULL;
 
         $_builds = self::getBuilds ($_data, $slice);
 

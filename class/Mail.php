@@ -156,7 +156,7 @@ class Mail
         {
             echo "WARNING > Impossible to send e-mail '". $subject ."': ". $e->getMessage () ." \n";
 
-            try { \Sentry\captureException ($e); } catch (\Throwable $ignored) {}
+            self::reportDaily ($e);
         }
 
         return FALSE;
@@ -341,7 +341,7 @@ class Mail
         {
             $this->reported = TRUE;
 
-            try { \Sentry\captureException ($first); } catch (\Throwable $ignored) {}
+            self::reportDaily ($first);
         }
 
         return FALSE;
@@ -399,6 +399,29 @@ class Mail
         if ($dropped) echo "WARNING > ". $dropped ." queued e-mail(s) discarded (older than ". self::QUEUE_DAYS ." days or more than ". self::QUEUE_MAX ." in queue)! \n";
 
         return $keep;
+    }
+
+    /*
+     * Falha de e-mail é de configuração do servidor (SMTP errado, porta bloqueada): vai ao Sentry no máximo uma vez por
+     * dia por servidor e por erro. O daemon roda a cada minuto (verificação de saúde) e cada execução reportava de
+     * novo: 1.440 eventos por dia por servidor com SMTP quebrado esgotaram a cota do sentry.io em out/2026
+     * (RELEASER-42, lada.cpafrr.embrapa.br com 'smtp-relay:25'). A marca fica na pasta da fila (volume /data).
+     */
+    static private function reportDaily (\Throwable $e)
+    {
+        try
+        {
+            $signature = get_class ($e) .'|'. preg_replace ('/\d+/', '#', $e->getMessage ());
+
+            $mark = self::queue () . DIRECTORY_SEPARATOR .'.sentry-'. md5 ($signature);
+
+            if (file_exists ($mark) && time () - filemtime ($mark) < 86400) return;
+
+            @touch ($mark);
+        }
+        catch (\Throwable $ignored) {}
+
+        try { \Sentry\captureException ($e); } catch (\Throwable $ignored) {}
     }
 
     static private function queue ()

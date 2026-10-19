@@ -22,7 +22,10 @@
  * "=== projeto/app@stage ===" ao iniciar cada build.
  */
 
-const SENTRY_DSN = 'https://dca31eca2c6644c687f46ecb99602841@o1289077.ingest.sentry.io/4505550695759872';
+// Chave nova desde a 1.26.10-7 (out/2026): a anterior (dca31eca…) foi desativada no sentry.io porque instalações
+// antigas e abandonadas, que nunca recebem atualização, esgotavam a cota do plano (mais de 30 mil eventos de SMTP
+// inválido); o plano não tem limite por chave. Instalação desatualizada volta a reportar ao atualizar a imagem.
+const SENTRY_DSN = 'https://07da98d05e5e3a42c6827d9fbcf44046@o1289077.ingest.us.sentry.io/4505550695759872';
 
 function sentryInit ($operation, $daemon)
 {

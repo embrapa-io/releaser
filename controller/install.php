@@ -235,9 +235,16 @@ foreach ($variables as $v)
 			break;
 
 		case 'VOLUME':
-			$value = $ask ($name .' (VOLUME suffix; the external volume will be '. $project .'_'. $app .'_'. $stage .'_<value>)', $default);
+			// A variável recebe o nome COMPLETO do volume externo ({projeto}_{app}_{estágio}_{sufixo}), como a plataforma
+			// injeta nas builds dos clusters: é ele que o docker-compose.yaml das apps referencia. Pergunta-se só o sufixo;
+			// um nome já completo (digitado ou no padrão do boilerplate) é mantido.
+			$prefix = $project .'_'. $app .'_'. $stage .'_';
 
-			$volumes [] = $project .'_'. $app .'_'. $stage .'_'. $value;
+			$suffix = $ask ($name .' (VOLUME suffix; the external volume will be '. $prefix .'<value>)', $default);
+
+			$value = strpos ($suffix, $prefix) === 0 ? $suffix : $prefix . $suffix;
+
+			$volumes [] = $value;
 
 			break;
 

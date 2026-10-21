@@ -194,6 +194,13 @@ $_operations = [
 		[
 			'jose.silva@embrapa.br,maria.santos@embrapa.br'
 		]
+	),
+	'check' => new Operation (
+		'Test access to GitLab (reachability, latency, token expiration and clone access)',
+		'Controller::check',
+		0,
+		'',
+		[]
 	)
 ];
 
@@ -209,7 +216,7 @@ try
 
 	$_operation = trim ($aux [0]);
 
-	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'health', 'cve' ]) ? TRUE : FALSE;
+	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'health', 'cve', 'check' ]) ? TRUE : FALSE;
 }
 catch (Exception $e)
 {
@@ -223,6 +230,23 @@ catch (Exception $e)
 	echo "\n";
 
 	echo "See 'docker exec -it ". $container ." io COMMAND --help' for more information on a command.";
+
+	// Teste rápido do acesso ao GitLab no fim do menu. Só chega aqui quem chamou o
+	// `io` sem comando (ou com um inexistente); os jobs do daemon sempre passam um.
+	try
+	{
+		require_once 'vendor/autoload.php';
+		require_once 'class/Controller.php';
+		require_once 'class/GitCheck.php';
+
+		echo "\n\nChecking access to GitLab... \n";
+
+		echo GitCheck::summary (GitCheck::run ()) ."\n";
+	}
+	catch (\Throwable $e)
+	{
+		echo "\n\nGitLab check: impossible to run (". $e->getMessage () .") \n";
+	}
 
 	exit;
 }
@@ -259,7 +283,8 @@ $lifetimes = [
 	'sanitize' => 15 * 24 * 60, // 15 days
 	'cleaner' => 12 * 60, // 12 hours
 	'health' => 10, // 10 minutes (roda a cada minuto)
-	'cve' => 3 * 60 // 3 hours (roda a cada hora)
+	'cve' => 3 * 60, // 3 hours (roda a cada hora)
+	'check' => 60 // 1 hour (roda uma vez por dia)
 ];
 
 // O health check roda a cada minuto: no daemon, só WARNING/ERROR/CRITICAL
@@ -290,6 +315,7 @@ require_once 'class/Controller.php';
 require_once 'class/Retention.php';
 require_once 'class/Report.php';
 require_once 'class/Trivy.php';
+require_once 'class/GitCheck.php';
 
 require_once 'plugin/DockerCompose.php';
 require_once 'plugin/DockerSwarm.php';

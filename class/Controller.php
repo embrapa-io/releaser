@@ -233,6 +233,13 @@ class Controller
         require self::PATH .'cve.php';
     }
 
+    static public function check ()
+    {
+        global $_daemon, $_data;
+
+        require self::PATH .'check.php';
+    }
+
     static public function install ($target = '', $flag = '')
     {
         global $_data;

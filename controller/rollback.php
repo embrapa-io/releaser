@@ -232,7 +232,7 @@ try
 	{
 		echo "error! \n";
 
-		throw new Exception ("Impossibe to clone repository. ". $e->getMessage () ."!");
+		throw new Exception ("Impossible to prepare the app from the repository. ". $e->getMessage () ."!");
 	}
 
 	try

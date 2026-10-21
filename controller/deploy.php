@@ -293,7 +293,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > Impossibe to clone repository. ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Impossible to prepare the app from the repository. ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 

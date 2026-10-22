@@ -483,9 +483,39 @@ class DockerSwarm extends Orchestrator
         }
     }
 
-    static public function restart ($path, $name)
+    static public function restart ($path, $name, $upgrade = FALSE)
     {
         chdir ($path);
+
+        // `--upgrade`: renova as imagens (pull e build --pull) e as envia ao registro, como no deploy; o `stack
+        // deploy` abaixo resolve a tag no registro (`--resolve-image always`, padrão), então as floating também mudam.
+        if ($upgrade)
+        {
+            $valid = self::checkDockerSwarmFile ($path, $name);
+
+            if (!$valid)
+                throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, enviroment variables, etc)');
+
+            chdir ($path);
+
+            self::upgradeImages ();
+
+            echo "INFO > Pushing images to registry... \n";
+
+            echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' push'."\n";
+
+            exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' push 2>&1', $output, $return);
+
+            if ($return !== 0)
+            {
+                echo implode ("\n", $output) ."\n";
+
+                throw new Exception ('Error when pushing images with Docker Compose');
+            }
+
+            unset ($return);
+            unset ($output);
+        }
 
         echo "INFO > Checking if stack ". $name ." is deployed...\n";
 

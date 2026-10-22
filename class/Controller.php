@@ -162,9 +162,19 @@ class Controller
         require self::PATH .'stop.php';
     }
 
-    static public function restart ($slice)
+    static public function restart ($slice, $flag = NULL)
     {
-        global $_data;
+        global $_daemon, $_data;
+
+        // `--upgrade` (ou `--update`): renova as imagens antes de subir, como o deployer da plataforma. Não há
+        // `--remove` (decisão de out/2026): o `down --volumes` do deployer apagaria volumes não externos.
+        if (in_array (trim ((string) $slice), [ '--upgrade', '--update' ]))
+            throw new Exception ("Inform the builds (or '--all') before '". trim ($slice) ."'. E.g.: io restart proj-a/app-1@beta ". trim ($slice));
+
+        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--upgrade', '--update' ]))
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'restart' is '--upgrade' (or its synonym '--update')");
+
+        $_upgrade = $flag !== NULL;
 
         $_builds = self::getBuilds ($_data, $slice);
 

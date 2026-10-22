@@ -2,7 +2,9 @@
 
 $_apps = $_data . DIRECTORY_SEPARATOR .'apps';
 
-echo "INFO > Checking status of ". sizeof ($_builds) ." build(s) to RESTART... \n";
+echo "INFO > Checking status of ". sizeof ($_builds) ." build(s) to RESTART". ($_upgrade ? " with UPGRADE of images" : "") ."... \n";
+
+$upgraded = [];
 
 foreach ($_builds as $_build => $_b)
 {
@@ -46,11 +48,11 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
-	echo "INFO > Restarting version '". $_last ."'... \n";
+	echo "INFO > Restarting version '". $_last ."'". ($_upgrade ? " with renewed images" : "") ."... \n";
 
 	try
 	{
-		(self::singleton ()->orchestrator)::restart ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
+		(self::singleton ()->orchestrator)::restart ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $_upgrade);
 	}
 	catch (Exception $e)
 	{
@@ -59,5 +61,33 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
-	echo "SUCCESS > All done! The version '". $_last ."' of build '". $_build ."' was successfully restarted! \n";
+	echo "SUCCESS > All done! The version '". $_last ."' of build '". $_build ."' was successfully ". ($_upgrade ? "upgraded and restarted" : "restarted") ."! \n";
+
+	if ($_upgrade) $upgraded [$_build] = $_b;
 }
+
+if (!$_upgrade || !sizeof ($upgraded)) return;
+
+// Depois do upgrade, a varredura de CVEs (o mesmo que `io cve <builds>`) e o relato ao core, para o alerta de
+// CVE da plataforma enxergar a correção no mesmo ciclo, sem esperar o `cve:daemon` da próxima hora.
+$_builds = [];
+
+foreach ($upgraded as $_build => $_b)
+	if (self::stats ($_b)->cve) $_builds [$_build] = $_b;
+	else echo "\nINFO > ". $_build .": CVE scan skipped ('stats.cve' is false). \n";
+
+if (!sizeof ($_builds)) return;
+
+echo "\n";
+
+// No Swarm, o `stack deploy` só agenda as tarefas: espera os containers novos subirem antes de varrer.
+if (getenv ('ORCHESTRATOR') === 'DockerSwarm')
+{
+	echo "INFO > Waiting 30 seconds for the Swarm services to converge before the CVE scan... \n";
+
+	sleep (30);
+}
+
+echo "INFO > Scanning the upgraded build(s) for CVEs and reporting to the core... \n";
+
+require self::PATH .'cve.php';

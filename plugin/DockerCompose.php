@@ -323,7 +323,7 @@ class DockerCompose extends Orchestrator
             throw new Exception ('Error when trying to stop containers with Docker Compose');
     }
 
-    static public function restart ($path, $namespace)
+    static public function restart ($path, $namespace, $upgrade = FALSE)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -334,16 +334,38 @@ class DockerCompose extends Orchestrator
 
         chdir ($path);
 
-        echo "INFO > Restarting application with Docker Compose... \n";
+        if (!$upgrade)
+        {
+            echo "INFO > Restarting application with Docker Compose... \n";
 
-        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart'."\n";
+            echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart'."\n";
 
-        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart 2>&1', $output, $return);
+            exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart 2>&1', $output, $return);
+
+            if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+            if ($return !== 0)
+                throw new Exception ('Error when trying to restart containers with Docker Compose');
+
+            return;
+        }
+
+        // `--upgrade`: o mesmo do deployer da plataforma (pull, build --pull e up). Com `--force-recreate`, como no
+        // deploy: sem ele, serviço sem imagem nova nem era reiniciado, e o `build --pull` move a tag mesmo sem mudar
+        // o conteúdo (atestados do BuildKit), deixando o container preso a uma imagem que o Trivy não encontra mais
+        // (visto com o containerd image store). Os CLI_SERVICES ficam no perfil `cli` e não sobem.
+        self::upgradeImages ();
+
+        echo "INFO > Recreating the containers with the renewed images... \n";
+
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --force-recreate'."\n";
+
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --force-recreate 2>&1', $output, $return);
 
         if (sizeof ($output)) echo implode ("\n", $output) ."\n";
 
         if ($return !== 0)
-            throw new Exception ('Error when trying to restart containers with Docker Compose');
+            throw new Exception ('Error when trying to start containers with Docker Compose');
     }
 
     /**

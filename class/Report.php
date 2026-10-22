@@ -97,13 +97,13 @@ class Report
         }
         catch (Exception $e)
         {
-            $reason = 'sem conexão com o core: '. $e->getMessage ();
+            $reason = 'no connection to the core: '. $e->getMessage ();
 
             $first = TRUE;
 
             foreach ($sent as $build => $keys)
             {
-                $warn ($build, $keys, 0, $reason, $first ? "Impossible to report to '". Controller::apiUrl () ."': ". $e->getMessage () : '');
+                $warn ($build, $keys, 0, $reason, $first ? "Unable to report to '". Controller::apiUrl () ."': ". $e->getMessage () : '');
 
                 $first = FALSE;
             }
@@ -139,7 +139,7 @@ class Report
 
             if (!$quiet) echo "SUCCESS > Reported ". $build ." to the core (". implode (', ', is_object ($a) ? (array) ($a->done ?? []) : []) ."). \n";
 
-            self::remember ($build, $sent [$build] ?? [], 200, 'aceito');
+            self::remember ($build, $sent [$build] ?? [], 200, 'accepted');
         }
 
         foreach ((array) ($data->rejected ?? []) as $r)
@@ -185,7 +185,7 @@ class Report
         }
         catch (Exception $e)
         {
-            throw new Exception ("Impossible to reach '". Controller::apiUrl () ."': ". $e->getMessage ());
+            throw new Exception ("Unable to reach '". Controller::apiUrl () ."': ". $e->getMessage ());
         }
 
         $status = $response->getStatusCode ();

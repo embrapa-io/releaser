@@ -31,14 +31,14 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "WARNING > Impossible to inspect containers of ". $_build .": ". $e->getMessage () ." \n";
+		echo "WARNING > Unable to inspect the containers of ". $_build .": ". $e->getMessage () ." \n";
 
 		continue;
 	}
 
 	if (!sizeof ($containers))
 	{
-		if (!$_daemon) echo "INFO > ". $_build .": no containers in this host (not deployed yet?). \n";
+		if (!$_daemon) echo "INFO > ". $_build .": no containers on this host (not deployed yet?). \n";
 
 		continue;
 	}

@@ -26,11 +26,11 @@ class DockerCompose extends Orchestrator
         $valid = self::checkDockerComposeFile ($path, $namespace);
 
         if (!$valid)
-            throw new Exception ('Invalid docker-compose.yaml file! Please, check configuration (volumes, ports, environment variables, etc)');
+            throw new Exception ('Invalid docker-compose.yaml file! Please check the configuration (volumes, ports, environment variables, etc.)');
 
         chdir ($path);
 
-        echo "INFO > Trying to execute backup service before deploy...\n";
+        echo "INFO > Trying to run the backup service before deploying...\n";
 
         echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
 
@@ -50,12 +50,12 @@ class DockerCompose extends Orchestrator
             echo "WARNING > Backup service failed! \n";
         }
         else
-            echo "SUCCESS > Backup service executed successfully! \n";
+            echo "SUCCESS > Backup service ran successfully! \n";
 
         unset ($return);
         unset ($output);
 
-        echo "INFO > Creating a stack network named as '". $namespace ."' with Docker... \n";
+        echo "INFO > Creating a stack network named '". $namespace ."' with Docker... \n";
 
         echo 'COMMAND > '. self::DOCKER .' network create '. $namespace ."\n";
 
@@ -74,7 +74,7 @@ class DockerCompose extends Orchestrator
         passthru ('set -e && '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $? 2>&1', $return);
 
         if ($return !== 0)
-            throw new Exception ('Error when buildings containers with Docker Compose');
+            throw new Exception ('Error when building containers with Docker Compose');
 
         unset ($return);
         unset ($output);
@@ -152,7 +152,7 @@ class DockerCompose extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File docker-compose.yaml is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
+            echo "ERROR > File docker-compose.yaml is INVALID! Please check the configuration (volumes, ports, environment variables, etc.). \n";
 
             return FALSE;
         }
@@ -164,7 +164,7 @@ class DockerCompose extends Orchestrator
 
         if (!file_exists ($out) || !is_readable ($out))
         {
-            echo "ERROR > Impossible to load interpolate docker-compose.yaml! \n";
+            echo "ERROR > Unable to load the interpolated docker-compose.yaml! \n";
 
             return FALSE;
         }
@@ -173,7 +173,7 @@ class DockerCompose extends Orchestrator
 
         if ($config === FALSE || !is_array ($config))
         {
-            echo "ERROR > Impossible to load properly interpolate docker-compose.yaml! \n";
+            echo "ERROR > Unable to properly load the interpolated docker-compose.yaml! \n";
 
             return FALSE;
         }
@@ -197,7 +197,7 @@ class DockerCompose extends Orchestrator
 
                 if (implode ('_', $aux) != $namespace)
                 {
-                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted drivers needed to inside of application context. \n";
+                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted volumes must belong to the application context. \n";
 
                     return FALSE;
                 }
@@ -211,11 +211,11 @@ class DockerCompose extends Orchestrator
         if (!array_key_exists ('networks', $config) || !is_array ($config ['networks']) || sizeof ($config ['networks']) !== 1 ||
             !array_key_exists ('external', $config ['networks'][array_key_first ($config ['networks'])]) || !(bool) $config ['networks'][array_key_first ($config ['networks'])]['external'] ||
             !array_key_exists ('name', $config ['networks'][array_key_first ($config ['networks'])]) || trim ($config ['networks'][array_key_first ($config ['networks'])]['name']) !== $namespace)
-            echo "WARNING > Its recommended that there is ONE, and only one, external network for the entire stack in 'docker-compose.yaml' (named '". $namespace ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
+            echo "WARNING > It is recommended to have ONE, and only one, external network for the entire stack in 'docker-compose.yaml' (named '". $namespace ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         if (!array_key_exists ('services', $config) || !is_array ($config ['services']))
         {
-            echo "ERROR > Impossible to load services from config file! \n";
+            echo "ERROR > Unable to load the services from the config file! \n";
 
             return FALSE;
         }
@@ -233,7 +233,7 @@ class DockerCompose extends Orchestrator
                 {
                     if (!isset ($port ['published']) || !(int) $port ['published'])
                     {
-                        echo "ERROR > Service '". $name ."' trying to expose a random port. All ports in services must be explicit! If you are not going to expose this service, remove it by setting a suitable 'profile'. \n";
+                        echo "ERROR > Service '". $name ."' is trying to expose a random port. All ports in services must be explicit! If you are not going to expose this service, remove it by setting a suitable 'profile'. \n";
 
                         return FALSE;
                     }
@@ -255,21 +255,21 @@ class DockerCompose extends Orchestrator
 
         exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services1, $return);
 
-        echo "INFO > Checking if has CLI services starting in application deployment... ";
+        echo "INFO > Checking for CLI services starting with the application... ";
 
         foreach (self::CLI_SERVICES as $index => $service)
             if (in_array ($service, $services1))
             {
-                echo "fail! \n";
+                echo "failed! \n";
 
-                echo "ERROR > Services named '". $service ."' cannot go up during deployment! Please, check attribute 'profiles' in configuration. \n";
+                echo "ERROR > Service '". $service ."' cannot start during deployment! Please check the 'profiles' attribute in the configuration. \n";
 
                 echo "\n". implode ("\n", $services1) ."\n\n";
 
                 return FALSE;
             }
 
-        echo "it's ok! \n";
+        echo "ok! \n";
 
         echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services'."\n";
 
@@ -283,13 +283,13 @@ class DockerCompose extends Orchestrator
 
         if (sizeof ($cli))
         {
-            echo "WARNING > Some CLI recommended services are NOT FOUND at docker-compose.yaml: ". implode (", ", $cli) ."! Please, check configuration. \n";
+            echo "WARNING > Some recommended CLI services were NOT FOUND in docker-compose.yaml: ". implode (", ", $cli) ."! Please check the configuration. \n";
 
             $warning = TRUE;
         }
 
         if ($warning)
-            echo "WARNING > File docker-compose.yaml is VALID, but has some alerts to fix! \n";
+            echo "WARNING > File docker-compose.yaml is VALID, but has some warnings to fix! \n";
         else
             echo "SUCCESS > File docker-compose.yaml is VALID! \n";
 
@@ -377,7 +377,7 @@ class DockerCompose extends Orchestrator
         exec (self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to get services in 'docker-compose.yaml'");
+            throw new Exception ("Unable to get the services in 'docker-compose.yaml'");
 
         if (!in_array ($service, array_map ('trim', $services)))
             throw new SkipException ("Build has no '". $service ."' service in 'docker-compose.yaml'");
@@ -467,13 +467,13 @@ class DockerCompose extends Orchestrator
     static public function reference ()
     {
         $buffer  = "https://docs.docker.com/compose/reference/ \n\n";
-        $buffer .= "Attention! To execute commands, you need inject environment variables of '.env.io' file. \n";
-        $buffer .= "See examples bellow: \n\n";
-        $buffer .= "Removing stopped service containers: \n";
+        $buffer .= "Attention! To run commands, you need to inject the environment variables of the '.env.io' file. \n";
+        $buffer .= "See the examples below: \n\n";
+        $buffer .= "Remove stopped service containers: \n";
         $buffer .= "env \$(cat .env.io) docker-compose rm \n\n";
         $buffer .= "Display the running processes: \n";
         $buffer .= "env \$(cat .env.io) docker-compose top \n\n";
-        $buffer .= "Access console (bash) of a service container named 'app': \n";
+        $buffer .= "Open a console (bash) in the container of a service named 'app': \n";
         $buffer .= "env \$(cat .env.io) docker-compose exec app bash \n";
 
         return $buffer;

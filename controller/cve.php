@@ -32,7 +32,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "WARNING > Impossible to inspect containers of ". $_build .": ". $e->getMessage () ." \n";
+		echo "WARNING > Unable to inspect the containers of ". $_build .": ". $e->getMessage () ." \n";
 
 		continue;
 	}
@@ -44,7 +44,7 @@ foreach ($_builds as $_build => $_b)
 
 	if (!sizeof ($images))
 	{
-		if (!$_daemon) echo "INFO > ". $_build .": no running containers in this host. \n";
+		if (!$_daemon) echo "INFO > ". $_build .": no running containers on this host. \n";
 
 		continue;
 	}

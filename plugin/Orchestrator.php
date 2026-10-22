@@ -107,7 +107,7 @@ abstract class Orchestrator
         exec ($cmd .' 2>&1', $output, $return);
 
         if ($return !== 0)
-            throw new Exception ("Error on Docker command: ". implode (' ', $output));
+            throw new Exception ("Error in Docker command: ". implode (' ', $output));
 
         $services = [];
 
@@ -199,7 +199,7 @@ abstract class Orchestrator
 
         if (!sizeof ($files))
         {
-            echo "WARNING > No backup files of this build found in volume! \n";
+            echo "WARNING > No backup files of this build found in the volume! \n";
 
             return [ 'keep' => [], 'delete' => [], 'ignore' => [], 'stats' => $stats + [ 'files_after' => 0, 'bytes_after' => 0, 'bytes_deleted' => 0 ] ];
         }
@@ -352,7 +352,7 @@ abstract class Orchestrator
         {
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ("Impossible to list files of volume '". $volume ."'");
+            throw new Exception ("Unable to list the files of volume '". $volume ."'");
         }
 
         $files = [];
@@ -384,7 +384,7 @@ abstract class Orchestrator
         {
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ("Impossible to delete files of volume '". $volume ."'");
+            throw new Exception ("Unable to delete the files of volume '". $volume ."'");
         }
     }
 
@@ -400,7 +400,7 @@ abstract class Orchestrator
 
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ('Impossible to connect in host "'. $host .'"');
+            throw new Exception ('Unable to connect to host "'. $host .'"');
         }
 
         echo "ok! \n";

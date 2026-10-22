@@ -41,7 +41,7 @@ fi
 if [ ! -d "/data" ]; then
   echo ""
 
-  echo "${R}Critical!${N} You need to mount volume data! Correct command to use this image is:"
+  echo "${R}Critical!${N} You need to mount the data volume! The correct command to use this image is:"
   echo ""
   echo "docker run --name releaser -v \$(pwd):/data -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped -d embrapa/releaser"
 
@@ -53,7 +53,7 @@ if [ ! -f "/data/.env" ]; then
     echo ""
 
     echo "${Y}Warning!${N} Environment variables file (.env) not found!"
-    echo "Please, enter with required info..."
+    echo "Please enter the required information..."
 
     echo ""
 
@@ -121,7 +121,7 @@ if [ ! -f "/data/.env" ]; then
     echo ""
 
     while
-      read -p "${B}e-Mail to log${N}: " email
+      read -p "${B}Log e-mail${N}: " email
       [[ -z $email || $email =~ [^a-zA-Z0-9,-@\.] ]]
     do true; done
 
@@ -146,7 +146,7 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
-    read -p "${B}Is correct?${N} (y/N): " confirm
+    read -p "${B}Is this correct?${N} (y/N): " confirm
 
     [[ -z $confirm || "$confirm" == "${confirm#[Yy]}" ]]
   do true; done
@@ -155,7 +155,7 @@ if [ ! -f "/data/.env" ]; then
 
   echo ""
 
-  echo "Note: A '.env' file has been created in volume directory shared with the container. To change values in the future, edit this file."
+  echo "Note: a '.env' file has been created in the volume directory shared with the container. To change values in the future, edit this file."
 fi
 
 export $(cat /data/.env)
@@ -163,12 +163,12 @@ export $(cat /data/.env)
 if [ ! -f "/root/.ssh/id_rsa" ]; then
   echo ""
 
-  echo "${Y}Warning!${N} Looks like the SSH Key to GitLab access is missing."
+  echo "${Y}Warning!${N} It looks like the SSH key for GitLab access is missing."
 
   echo ""
 
   if [ ! -f "/data/ssh" ]; then
-    echo "Generating new SSH key pair..."
+    echo "Generating a new SSH key pair..."
 
     ssh-keygen -o -t rsa -b 4096 -N '' -C '' -f /data/ssh
   else
@@ -176,14 +176,14 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
   fi
 
   if [ ! -f "/data/ssh.pub" ]; then
-    echo "Generating a new SSH public key from private key..."
+    echo "Generating a new SSH public key from the private key..."
 
     ssh-keygen -y -f /data/ssh > /data/ssh.pub
   fi
 
   echo ""
 
-  echo "Configuring SSH private key in container environment..."
+  echo "Configuring the SSH private key in the container environment..."
 
   mkdir -p /root/.ssh
   cp /data/ssh /root/.ssh/id_rsa
@@ -193,7 +193,7 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
 
   echo ""
 
-  echo "${G}Done!${N} Please, access GitLab (https://git.embrapa.io) and, in your profile,"
+  echo "${G}Done!${N} Please access GitLab (https://git.embrapa.io) and, in your profile,"
   echo "add a new SSH key with the following content:"
 
   echo ""
@@ -202,7 +202,7 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
 
   echo ""
 
-  echo "Note: SSH key pair is available on the volume directory shared with the container."
+  echo "Note: the SSH key pair is available in the volume directory shared with the container."
 fi
 
 # Autocorreção a cada execução: containers criados com umask 0000 por versões
@@ -217,7 +217,7 @@ if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
 
   echo ""
 
-  echo "Please enter some builds comma separated, e.g.:"
+  echo "Please enter one or more builds, separated by commas, e.g.:"
   echo "project-a/app1@beta,project-b/web@release,project-a/app2@alpha"
 
   echo ""
@@ -282,7 +282,7 @@ if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
   done
 
   if (( count == 0 )); then
-    echo "${Y}Warning!${N} No one build could be configured. Try again or run 'io install' for a guided setup."
+    echo "${Y}Warning!${N} No build could be configured. Try again or run 'io install' for a guided setup."
 
     exit 1
   fi

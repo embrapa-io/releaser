@@ -50,11 +50,11 @@ class DockerSwarm extends Orchestrator
         $valid = self::checkDockerSwarmFile ($path, $name);
 
         if (!$valid)
-            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, enviroment variables, etc)');
+            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please check the configuration (volumes, ports, environment variables, etc.)');
 
         chdir ($path);
 
-        echo "INFO > Trying to execute backup service before deploy...\n";
+        echo "INFO > Trying to run the backup service before deploying...\n";
 
         try
         {
@@ -65,7 +65,7 @@ class DockerSwarm extends Orchestrator
             echo "WARNING > Backup service failed: ". $e->getMessage () ."! \n";
         }
 
-        echo "INFO > Creating a stack network named as '". $name ."' with Docker... \n";
+        echo "INFO > Creating a stack network named '". $name ."' with Docker... \n";
 
         echo 'COMMAND > '. self::DOCKER .' network create -d overlay '. $name ."\n";
 
@@ -84,12 +84,12 @@ class DockerSwarm extends Orchestrator
         passthru ('set -e && '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up --force-recreate --build --no-start && exit $? 2>&1', $return);
 
         if ($return !== 0)
-            throw new Exception ('Error when buildings containers with Docker Compose');
+            throw new Exception ('Error when building containers with Docker Compose');
 
         unset ($return);
         unset ($output);
 
-        echo "INFO > Pushing images to registry... \n";
+        echo "INFO > Pushing images to the registry... \n";
 
         echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' push '."\n";
 
@@ -112,7 +112,7 @@ class DockerSwarm extends Orchestrator
         exec (self::DOCKER .' stack list --format "{{.Name}}" 2>&1', $stacks, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to check deployed stacks");
+            throw new Exception ("Unable to check deployed stacks");
 
         if (in_array ($name, $stacks))
         {
@@ -158,7 +158,7 @@ class DockerSwarm extends Orchestrator
 
         if (!file_exists ('.embrapa/swarm/deployment.yaml'))
         {
-            echo "ERROR > Missing '.embrapa/swarm/deployment.yaml' file in app folder! \n";
+            echo "ERROR > Missing '.embrapa/swarm/deployment.yaml' file in the app folder! \n";
 
             return FALSE;
         }
@@ -169,7 +169,7 @@ class DockerSwarm extends Orchestrator
 
         if ($return !== 0 || sizeof ($profiles) > 0)
         {
-            echo "ERROR > Profiles is not supported by Docker Swarm! Found: ". implode (', ', $profiles) .". Please, edit '.embrapa/swarm/deployment.yaml' to fix it. \n";
+            echo "ERROR > Profiles are not supported by Docker Swarm! Found: ". implode (', ', $profiles) .". Please edit '.embrapa/swarm/deployment.yaml' to fix it. \n";
 
             return FALSE;
         }
@@ -198,7 +198,7 @@ class DockerSwarm extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File 'docker-compose.yaml' is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
+            echo "ERROR > File 'docker-compose.yaml' is INVALID! Please check the configuration (volumes, ports, environment variables, etc.). \n";
 
             return FALSE;
         }
@@ -226,7 +226,7 @@ class DockerSwarm extends Orchestrator
 
         if ($return !== 0)
         {
-            echo "ERROR > File '.embrapa/swarm/deployment.yaml' is INVALID! Please, check configuration (volumes, ports, environment variables, etc). \n";
+            echo "ERROR > File '.embrapa/swarm/deployment.yaml' is INVALID! Please check the configuration (volumes, ports, environment variables, etc.). \n";
 
             return FALSE;
         }
@@ -238,14 +238,14 @@ class DockerSwarm extends Orchestrator
 
         if (!file_exists ($out1) || !is_readable ($out1))
         {
-            echo "ERROR > Impossible to load interpolated 'docker-compose.yaml'! \n";
+            echo "ERROR > Unable to load the interpolated 'docker-compose.yaml'! \n";
 
             return FALSE;
         }
 
         if (!file_exists ($out2) || !is_readable ($out2))
         {
-            echo "ERROR > Impossible to load interpolates '.embrapa/swarm/deployment.yaml'! \n";
+            echo "ERROR > Unable to load the interpolated '.embrapa/swarm/deployment.yaml'! \n";
 
             return FALSE;
         }
@@ -255,14 +255,14 @@ class DockerSwarm extends Orchestrator
 
         if ($cBuild === FALSE || !is_array ($cBuild))
         {
-            echo "ERROR > Impossible to load properly interpolated 'docker-compose.yaml'! \n";
+            echo "ERROR > Unable to properly load the interpolated 'docker-compose.yaml'! \n";
 
             return FALSE;
         }
 
         if ($cDeply === FALSE || !is_array ($cDeply))
         {
-            echo "ERROR > Impossible to load properly interpolated '.embrapa/swarm/deployment.yaml'! \n";
+            echo "ERROR > Unable to properly load the interpolated '.embrapa/swarm/deployment.yaml'! \n";
 
             return FALSE;
         }
@@ -288,7 +288,7 @@ class DockerSwarm extends Orchestrator
 
                 if (implode ('_', $aux) != $prefix)
                 {
-                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted drivers needed to inside of application context. \n";
+                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted volumes must belong to the application context. \n";
 
                     return FALSE;
                 }
@@ -318,7 +318,7 @@ class DockerSwarm extends Orchestrator
 
                 if (implode ('_', $aux) != $prefix)
                 {
-                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted drivers needed to inside of application context. \n";
+                    echo "ERROR > Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted volumes must belong to the application context. \n";
 
                     return FALSE;
                 }
@@ -332,12 +332,12 @@ class DockerSwarm extends Orchestrator
         if (!array_key_exists ('networks', $cBuild) || !is_array ($cBuild ['networks']) || sizeof ($cBuild ['networks']) !== 1 ||
             !array_key_exists ('external', $cBuild ['networks'][array_key_first ($cBuild ['networks'])]) || !(bool) $cBuild ['networks'][array_key_first ($cBuild ['networks'])]['external'] ||
             !array_key_exists ('name', $cBuild ['networks'][array_key_first ($cBuild ['networks'])]) || trim ($cBuild ['networks'][array_key_first ($cBuild ['networks'])]['name']) !== $prefix)
-            echo "WARNING > Its recommended that there is ONE, and only one, external network to entire stack in 'docker-compose.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
+            echo "WARNING > It is recommended to have ONE, and only one, external network for the entire stack in 'docker-compose.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         if (!array_key_exists ('networks', $cDeply) || !is_array ($cDeply ['networks']) || sizeof ($cDeply ['networks']) !== 1 ||
             !array_key_exists ('external', $cDeply ['networks'][array_key_first ($cDeply ['networks'])]) || !(bool) $cDeply ['networks'][array_key_first ($cDeply ['networks'])]['external'] ||
             !array_key_exists ('name', $cDeply ['networks'][array_key_first ($cDeply ['networks'])]) || trim ($cDeply ['networks'][array_key_first ($cDeply ['networks'])]['name']) !== $prefix)
-            echo "WARNING > Its recommended that there is ONE, and only one, external network to entire stack in '.embrapa/swarm/deployment.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
+            echo "WARNING > It is recommended to have ONE, and only one, external network for the entire stack in '.embrapa/swarm/deployment.yaml' (named '". $prefix ."'). See https://docs.docker.com/compose/networking/ for more info. \n";
 
         $network = array_key_first ($cDeply ['networks']);
 
@@ -346,7 +346,7 @@ class DockerSwarm extends Orchestrator
         if (!array_key_exists ('services', $cBuild) || !is_array ($cBuild ['services']) ||
             !array_key_exists ('services', $cDeply) || !is_array ($cDeply ['services']))
         {
-            echo "ERROR > Impossible to load services from config files! Check 'docker-compose.yaml' and '.embrapa/swarm/deployment.yaml'. \n";
+            echo "ERROR > Unable to load the services from the config files! Check 'docker-compose.yaml' and '.embrapa/swarm/deployment.yaml'. \n";
 
             return FALSE;
         }
@@ -385,25 +385,25 @@ class DockerSwarm extends Orchestrator
 
             if (!isset ($service ['networks']) || !is_array ($service ['networks']) ||
                 sizeof ($service ['networks']) !== 1 || !array_key_exists ($network, $service ['networks']))
-                echo "WARNING > Service '". $name ."' not referring '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/deployment.yaml'. \n";
+                echo "WARNING > Service '". $name ."' does not reference the '". $prefix ."' external network (aliased as '". $network ."')! Check '.embrapa/swarm/deployment.yaml'. \n";
 
             if (isset ($service ['deploy']['mode']) && trim ($service ['deploy']['mode']) != 'global')
             {
-                echo "ERROR > In this time, is not accepted more than one instance per cluster node! Remove deploy mode or change it to 'global' at service '". $name ."' in '.embrapa/swarm/deployment.yaml'. \n";
+                echo "ERROR > Currently, more than one instance per cluster node is not accepted! Remove the deploy mode or change it to 'global' in service '". $name ."' in '.embrapa/swarm/deployment.yaml'. \n";
 
                 return FALSE;
             }
 
             if (!isset ($service ['deploy']['restart_policy']['condition']) || trim ($service ['deploy']['restart_policy']['condition']) !== 'on-failure')
             {
-                echo "ERROR > Change 'restart_policy' of service '". $name ."' in '.embrapa/swarm/deployment.yaml' to 'on-failure' condition! \n";
+                echo "ERROR > Change the 'restart_policy' condition of service '". $name ."' in '.embrapa/swarm/deployment.yaml' to 'on-failure'! \n";
 
                 return FALSE;
             }
 
             if (isset ($service ['deploy']['update_config']) || isset ($service ['deploy']['replicas']) || isset ($service ['deploy']['resources']['reservations']))
             {
-                echo "ERROR > In this time, is not accepted to use of 'update_config', 'replicas' or 'resources.reservations' attributes! Remove it at service '". $name ."' in '.embrapa/swarm/deployment.yaml'. \n";
+                echo "ERROR > Currently, the 'update_config', 'replicas' and 'resources.reservations' attributes are not accepted! Remove them from service '". $name ."' in '.embrapa/swarm/deployment.yaml'. \n";
 
                 return FALSE;
             }
@@ -420,7 +420,7 @@ class DockerSwarm extends Orchestrator
 
         if (sizeof ($invalidPorts))
         {
-            echo "ERROR > Trying to use PORTs that is not defined at application configuration: ". implode (", ", $invalidPorts) ."! \n";
+            echo "ERROR > Trying to use PORTs that are not defined in the application configuration: ". implode (", ", $invalidPorts) ."! \n";
 
             return FALSE;
         }
@@ -439,15 +439,15 @@ class DockerSwarm extends Orchestrator
 
         if (sizeof ($cli))
         {
-            echo "WARNING > Some CLI recommended services are NOT FOUND at 'docker-compose.yaml' or '.embrapa/swarm/cli/': ". implode (", ", $cli) ."! Please, check configuration. \n";
+            echo "WARNING > Some recommended CLI services were NOT FOUND in 'docker-compose.yaml' or '.embrapa/swarm/cli/': ". implode (", ", $cli) ."! Please check the configuration. \n";
 
             $warning = TRUE;
         }
 
         if ($warning)
-            echo "WARNING > File 'docker-compose.yaml' (for BUILD) and '.embrapa/swarm/deployment.yaml' (for DEPLOY) are VALIDs, but has some alerts to fix! \n";
+            echo "WARNING > File 'docker-compose.yaml' (for BUILD) and '.embrapa/swarm/deployment.yaml' (for DEPLOY) are VALID, but have some warnings to fix! \n";
         else
-            echo "SUCCESS > File 'docker-compose.yaml' (for BUILD) and '.embrapa/swarm/deployment.yaml' (for DEPLOY) are VALIDs! \n";
+            echo "SUCCESS > File 'docker-compose.yaml' (for BUILD) and '.embrapa/swarm/deployment.yaml' (for DEPLOY) are VALID! \n";
 
         return TRUE;
     }
@@ -464,7 +464,7 @@ class DockerSwarm extends Orchestrator
         exec (self::DOCKER .' stack list --format "{{.Name}}" 2>&1', $stacks, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to check deployed stacks");
+            throw new Exception ("Unable to check deployed stacks");
 
         if (!in_array ($name, $stacks))
             throw new Exception ("Stack '". $name ."' is not deployed");
@@ -494,13 +494,13 @@ class DockerSwarm extends Orchestrator
             $valid = self::checkDockerSwarmFile ($path, $name);
 
             if (!$valid)
-                throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, enviroment variables, etc)');
+                throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please check the configuration (volumes, ports, environment variables, etc.)');
 
             chdir ($path);
 
             self::upgradeImages ();
 
-            echo "INFO > Pushing images to registry... \n";
+            echo "INFO > Pushing images to the registry... \n";
 
             echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' push'."\n";
 
@@ -524,7 +524,7 @@ class DockerSwarm extends Orchestrator
         exec (self::DOCKER .' stack list --format "{{.Name}}" 2>&1', $stacks, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to check deployed stacks");
+            throw new Exception ("Unable to check deployed stacks");
 
         if (in_array ($name, $stacks))
         {
@@ -545,7 +545,7 @@ class DockerSwarm extends Orchestrator
         unset ($return);
         unset ($output);
 
-        echo "INFO > Creating a stack network named as '". $name ."' with Docker Swarm... \n";
+        echo "INFO > Creating a stack network named '". $name ."' with Docker Swarm... \n";
 
         echo 'COMMAND > '. self::DOCKER .' network create -d overlay '. $name ."\n";
 
@@ -594,7 +594,7 @@ class DockerSwarm extends Orchestrator
         $valid = self::checkDockerSwarmFile ($path, $prefix);
 
         if (!$valid)
-            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please, check configuration (volumes, ports, environment variables, etc)');
+            throw new Exception ('Invalid build (docker-compose.yaml) or deploy (.embrapa/swarm/deployment.yaml) files! Please check the configuration (volumes, ports, environment variables, etc.)');
 
         chdir ($path);
 
@@ -608,7 +608,7 @@ class DockerSwarm extends Orchestrator
         exec (self::DOCKER .' stack list --format "{{.Name}}" 2>&1', $stacks, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to check deployed stacks");
+            throw new Exception ("Unable to check deployed stacks");
 
         if (!in_array ($prefix, $stacks))
             throw new Exception ("Stack '". $prefix ."' is not deployed yet");
@@ -620,7 +620,7 @@ class DockerSwarm extends Orchestrator
         exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
 
         if ($return !== 0)
-            throw new Exception ("Impossible to get services in 'docker-compose.yaml'");
+            throw new Exception ("Unable to get the services in 'docker-compose.yaml'");
 
         if (!in_array ($service, array_map ('trim', $services)))
             throw new SkipException ("Build has no '". $service ."' service in 'docker-compose.yaml'");
@@ -633,15 +633,15 @@ class DockerSwarm extends Orchestrator
         exec (''. self::env ('.env', '.env.sh') .' '. self::DOCKER_COMPOSE .' -f .embrapa/swarm/cli/'. $service .'.yaml config > '. $out .' 2> '. $log, $trash, $return);
 
         if (!file_exists ($out) || !is_readable ($out))
-            throw new Exception ("Impossible to load interpolates '.embrapa/swarm/cli/'. $service .'.yaml'");
+            throw new Exception ("Unable to load the interpolated '.embrapa/swarm/cli/'. $service .'.yaml'");
 
         $config = yaml_parse_file ($out);
 
         if ($config === FALSE || !is_array ($config))
-            throw new Exception ("Impossible to load properly interpolated 'docker-compose.yaml'");
+            throw new Exception ("Unable to properly load the interpolated 'docker-compose.yaml'");
 
         if (!isset ($config ['services']) || !is_array ($config ['services']) || !sizeof ($config ['services']))
-            throw new Exception ("Has no one configured service at '.embrapa/swarm/cli/'. $service .'.yaml'");
+            throw new Exception ("No service configured in '.embrapa/swarm/cli/'. $service .'.yaml'");
 
         $volumes = [];
 
@@ -657,7 +657,7 @@ class DockerSwarm extends Orchestrator
                 array_pop ($aux);
 
                 if (implode ('_', $aux) != $prefix)
-                    throw new Exception ("Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted drivers needed to inside of application context");
+                    throw new Exception ("Volume '". $name ."' is pointing to '". $volume ['name'] ."'! All mounted volumes must belong to the application context");
 
                 $volumes [] = $name;
             }
@@ -668,7 +668,7 @@ class DockerSwarm extends Orchestrator
         if (!array_key_exists ('networks', $config) || !is_array ($config ['networks']) || sizeof ($config ['networks']) !== 1 ||
             !array_key_exists ('external', $config ['networks'][array_key_first ($config ['networks'])]) || !(bool) $config ['networks'][array_key_first ($config ['networks'])]['external'] ||
             !array_key_exists ('name', $config ['networks'][array_key_first ($config ['networks'])]) || trim ($config ['networks'][array_key_first ($config ['networks'])]['name']) !== $prefix)
-            throw new Exception ("Is needed to exists ONE, and only one, external network to entire stack. Must be named '". $prefix ."'. See https://docs.docker.com/compose/networking/ for more info");
+            throw new Exception ("There must be ONE, and only one, external network for the entire stack. It must be named '". $prefix ."'. See https://docs.docker.com/compose/networking/ for more info");
 
         $network = array_key_first ($config ['networks']);
 
@@ -682,16 +682,16 @@ class DockerSwarm extends Orchestrator
             //     throw new Exception ("Service '". $name ."' not referring '". $prefix ."' external network (nicknamed '". $network ."') ! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (isset ($s ['deploy']['mode']))
-                throw new Exception ("CLI services cannot be replicated! Remove deploy mode at service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
+                throw new Exception ("CLI services cannot be replicated! Remove the deploy mode in service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (!isset ($s ['deploy']['restart_policy']['condition']) || trim ($s ['deploy']['restart_policy']['condition']) !== 'none')
-                throw new Exception ("CLI services cannot be restarted! Set restart policy as 'none' at service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
+                throw new Exception ("CLI services cannot be restarted! Set the restart policy to 'none' in service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (isset ($s ['deploy']['update_config']) || isset ($s ['deploy']['replicas']) || isset ($s ['deploy']['resources']['reservations']))
-                throw new Exception ("CLI services cannot use 'update_config', 'replicas' or 'resources.reservations' attributes! Remove it at service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
+                throw new Exception ("CLI services cannot use the 'update_config', 'replicas' or 'resources.reservations' attributes! Remove them from service '". $name ."' in '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (isset ($s ['ports']))
-                throw new Exception ("You cannot declare ports to be expose in a CLI service! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
+                throw new Exception ("You cannot declare ports to be exposed in a CLI service! Check '.embrapa/swarm/cli/'. $service .'.yaml'");
 
             if (isset ($s ['volumes']))
                 foreach ($s ['volumes'] as $trash => $volume)
@@ -718,7 +718,7 @@ class DockerSwarm extends Orchestrator
         {
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ("Impossible to push images to registry");
+            throw new Exception ("Unable to push images to the registry");
         }
 
         $name = $prefix .'_'. $service;
@@ -747,7 +747,7 @@ class DockerSwarm extends Orchestrator
     static public function reference ()
     {
         $buffer  = "https://docs.docker.com/engine/reference/commandline/stack/ \n\n";
-        $buffer .= "Attention! To execute the commands, you need inject environment variables of '.env.io' file. \n";
+        $buffer .= "Attention! To run commands, you need to inject the environment variables of the '.env.io' file. \n";
 
         return $buffer;
     }

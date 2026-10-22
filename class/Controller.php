@@ -21,7 +21,7 @@ class Controller
 
     private final function __construct ()
 	{
-        echo "INFO > Trying to load metadata info... \n";
+        echo "INFO > Trying to load metadata... \n";
 
         // Os catálogos (boilerplates, clusters e orquestradores) vêm da rota pública
         // do backend da plataforma, sem token. O repositório io/boilerplate/metadata
@@ -36,7 +36,7 @@ class Controller
         }
         catch (Exception $e)
         {
-            echo "WARNING > Impossible to load metadata from '". self::apiUrl () ."' (". $e->getMessage () ."). Falling back to GitLab... \n";
+            echo "WARNING > Unable to load metadata from '". self::apiUrl () ."' (". $e->getMessage () ."). Falling back to GitLab... \n";
 
             $git = GitLab::singleton ();
 
@@ -69,12 +69,12 @@ class Controller
         }
 
         if (!$type)
-            throw new Exception ("Fail to load type '". getenv ('ORCHESTRATOR') ."'! See registered types in '". getenv ('GITLAB_URL') ."/io/boilerplate/metadata' at file 'orchestrators.json'.");
+            throw new Exception ("Unable to load orchestrator type '". getenv ('ORCHESTRATOR') ."'! See the registered types in '". getenv ('GITLAB_URL') ."/io/boilerplate/metadata' (file 'orchestrators.json').");
 
         $this->orchestrator = getenv ('ORCHESTRATOR');
         $this->environment = $type->variables;
 
-        echo "INFO > Metadata info of boilerplates, clusters and types loaded! \n";
+        echo "INFO > Metadata of boilerplates, clusters and orchestrators loaded! \n";
     }
 
     static public function singleton ()
@@ -169,7 +169,7 @@ class Controller
         // `--upgrade` (ou `--update`): renova as imagens antes de subir, como o deployer da plataforma. Não há
         // `--remove` (decisão de out/2026): o `down --volumes` do deployer apagaria volumes não externos.
         if (in_array (trim ((string) $slice), [ '--upgrade', '--update' ]))
-            throw new Exception ("Inform the builds (or '--all') before '". trim ($slice) ."'. E.g.: io restart proj-a/app-1@beta ". trim ($slice));
+            throw new Exception ("Specify the builds (or '--all') before '". trim ($slice) ."'. E.g.: io restart proj-a/app-1@beta ". trim ($slice));
 
         if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--upgrade', '--update' ]))
             throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'restart' is '--upgrade' (or its synonym '--update')");
@@ -312,7 +312,7 @@ class Controller
         // Mail::send() nunca lança exceção (falha vira WARNING e fila): o teste
         // usa test(), que devolve o resultado real do envio.
         if (Mail::singleton ()->test ('Releaser at '. getenv ('SERVER') .' - E-MAIL TEST', "It's ok!", $addresses))
-            echo "SUCCESS > Sent! \n";
+            echo "SUCCESS > E-mail sent! \n";
         else
             echo "ERROR > The test e-mail could not be sent! See the SMTP attempts above. \n";
     }
@@ -405,7 +405,7 @@ class Controller
         }
 
         if (!file_exists ($legacy) && !(file_exists ($dir) && is_dir ($dir)))
-            throw new Exception ("Is needed configure builds of apps to deploy: one file per build in '". $dir ."' (or the legacy '". $legacy ."')!");
+            throw new Exception ("The builds to deploy must be configured: one file per build in '". $dir ."' (or the legacy '". $legacy ."')!");
 
         return $builds;
     }

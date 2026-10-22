@@ -17,10 +17,10 @@ ini_set ('memory_limit', '-1');
 ini_set ('register_argc_argv', '1');
 
 if (PHP_SAPI != 'cli')
-	die ("CRITICAL > This is a command-line script! You cannot call by browser. \n");
+	die ("CRITICAL > This is a command-line script! It cannot be called from a browser. \n");
 
 if (!`which git`)
-	die ("CRITICAL > GIT package not found!");
+	die ("CRITICAL > Git package not found! \n");
 
 if (!(int) ini_get ('register_argc_argv'))
 	die ("CRITICAL > This is a command-line script! You must enable 'register_argc_argv' directive. \n");
@@ -42,20 +42,20 @@ foreach ($vars as $trash => $var)
 		$unsetted [] = $var;
 
 if (sizeof ($unsetted))
-	die ("CRITICAL > Required environment variables are not setted: ". implode (', ', $unsetted) ."! \n");
+	die ("CRITICAL > Required environment variables are not set: ". implode (', ', $unsetted) ."! \n");
 
 require_once 'class/Mail.php';
 
 if (!Mail::isValid (getenv ('SMTP_FROM')))
-	echo "WARNING > The email address entered in 'SMTP_FROM' (at '.env' file) appears to be invalid! \n";
+	echo "WARNING > The e-mail address in 'SMTP_FROM' (in the '.env' file) appears to be invalid! \n";
 
 if (!Mail::isValid (getenv ('LOG_MAIL')))
-	echo "WARNING > The email address entered in 'LOG_MAIL' (at '.env' file) appears to be invalid! \n";
+	echo "WARNING > The e-mail address in 'LOG_MAIL' (in the '.env' file) appears to be invalid! \n";
 
 require_once 'plugin/Orchestrator.php';
 
 if (!Orchestrator::exists (getenv ('ORCHESTRATOR')))
-	die ("CRITICAL > Orchestrator '". getenv ('ORCHESTRATOR') ."' defined in '.env' is not valid! \n");
+	die ("CRITICAL > Orchestrator '". getenv ('ORCHESTRATOR') ."' set in '.env' is not valid! \n");
 
 require_once 'class/Operation.php';
 require_once 'class/Menu.php';
@@ -86,7 +86,7 @@ $_operations = [
 			'proj-b/web@release --force'
 		],
 		'deploy',
-		'Re-validate, prepare (i.e., create network) and deploy the latest tag of builds. With --force, deploys again even if the latest tag is already deployed.'
+		'Re-validate, prepare (i.e., create the network) and deploy the latest tag of builds. With --force, deploys again even if the latest tag is already deployed.'
 	),
 	'stop' => new Operation (
 		'Stop builds (--down removes the containers)',
@@ -121,7 +121,7 @@ $_operations = [
 		'[BUILD] [VERSION]',
 		'my-project/backend@beta 3.'. date ('y.n') .'-beta.17',
 		'deploy',
-		'Rollback build to a previous version (tag) of the same stage.'
+		'Roll back a build to a previous version (tag) of the same stage.'
 	),
 	'backup' => new Operation (
 		'Run the backup service of builds',
@@ -133,7 +133,7 @@ $_operations = [
 			'--all'
 		],
 		'maintenance',
-		'Generate backup of builds, running the \'backup\' CLI service of each stack. Builds without it (e.g., frontends) are skipped.'
+		'Back up builds by running the \'backup\' CLI service of each stack. Builds without it (e.g., frontends) are skipped.'
 	),
 	'sanitize' => new Operation (
 		'Run the sanitize service of builds',
@@ -145,7 +145,7 @@ $_operations = [
 			'--all'
 		],
 		'maintenance',
-		'Run the sanitize process: the \'sanitize\' CLI service of each stack. Builds without it are skipped.'
+		'Run the sanitize process (the \'sanitize\' CLI service of each stack). Builds without it are skipped.'
 	),
 	'cleaner' => new Operation (
 		'Rotate backups (7 daily, 4 weekly, 3 monthly)',
@@ -223,7 +223,7 @@ $_operations = [
 		'',
 		[],
 		'setup',
-		'Show the directory of each deployed build, the last reports to the platform and how to execute other util commands.'
+		'Show the directory of each deployed build, the latest reports to the platform and how to run other useful commands.'
 	),
 	'mail' => new Operation (
 		'Send a test e-mail (SMTP settings)',
@@ -234,7 +234,7 @@ $_operations = [
 			'jose.silva@embrapa.br,maria.santos@embrapa.br'
 		],
 		'setup',
-		'Test e-mail settings, sending a message to the addresses informed.'
+		'Test the e-mail settings by sending a message to the given addresses.'
 	)
 ];
 
@@ -291,7 +291,7 @@ $_path = dirname (__FILE__);
 $_data = DIRECTORY_SEPARATOR .'data';
 
 if (!file_exists ($_data) || !is_dir ($_data))
-	die ("CRITICAL > Volume for data storage is not mounted! \n");
+	die ("CRITICAL > The data storage volume is not mounted! \n");
 
 $lockLifetime = intval (getenv ('LOCK_LIFETIME_MINUTES'));
 
@@ -366,7 +366,7 @@ try
 
 	echo "FINISH > All done after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds! \n";
 
-	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESS EXECUTION of Releaser', mailBody ());
+	if ($_daemon && !$_nothing) Mail::singleton ()->send ('SUCCESSFUL EXECUTION of Releaser', mailBody ());
 
 	if ($_daemon) Mail::singleton ()->flush (); // fila de e-mails que não saíram em execuções anteriores
 
@@ -385,7 +385,7 @@ try
 {
 	echo "FINISH > Stopped after ". number_format (time () - $_benchmark, 0, ',', '.') ." seconds! \n";
 
-	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR of Releaser', mailBody ());
+	if ($_daemon) Mail::singleton ()->send ('CRITICAL ERROR in Releaser', mailBody ());
 
 	if ($_daemon) Mail::singleton ()->flush ();
 }

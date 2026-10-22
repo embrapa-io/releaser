@@ -4,7 +4,7 @@ $_apps = $_data . DIRECTORY_SEPARATOR .'apps';
 
 $_dryRun = isset ($_flag) && trim ((string) $_flag) === '--dry-run';
 
-echo "INFO > Checking status of ". sizeof ($_builds) ." build(s) to CLEAN (rotate backups)... \n";
+echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to CLEAN (rotate backups)... \n";
 
 if ($_dryRun) echo "INFO > Dry run: nothing will be deleted. \n";
 
@@ -29,7 +29,7 @@ foreach ($_builds as $_build => $_b)
 
 	echo "=== ". $_build ." === \n\n";
 
-	echo "INFO > Checking if build '". $_build ."' has has been deployed... \n";
+	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 
 	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))
 	{
@@ -51,7 +51,7 @@ foreach ($_builds as $_build => $_b)
 
 	if (!is_string ($_last) || $_last == '' || !self::score ($_b->stage, $_last))
 	{
-		echo "ERROR > No one valid version was deployed to this build! \n\n";
+		echo "ERROR > No valid version has been deployed to this build! \n\n";
 
 		continue;
 	}
@@ -60,7 +60,7 @@ foreach ($_builds as $_build => $_b)
 
 	if (!file_exists ($clone) || !is_dir ($clone))
 	{
-		echo "ERROR > The clone to version/tag '". $_last ."' is missing! \n\n";
+		echo "ERROR > The clone of version/tag '". $_last ."' is missing! \n\n";
 
 		continue;
 	}
@@ -79,7 +79,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "ERROR > Impossibe to rotate backups of build. ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to rotate backups of build. ". $e->getMessage () ."! \n\n";
 
 		continue;
 	}

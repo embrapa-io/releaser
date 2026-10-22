@@ -131,7 +131,7 @@ class GitCheck
         ];
 
         if (!array_intersect ([ 'read_api', 'api' ], $details ['scopes']))
-            return self::result ('ERROR', 'without scope read_api (has: '. implode (', ', $details ['scopes']) .')', $details + [ 'alert' => TRUE ]);
+            return self::result ('ERROR', 'missing the read_api scope (has: '. implode (', ', $details ['scopes']) .')', $details + [ 'alert' => TRUE ]);
 
         if (!$details ['expires'])
             return self::result ('OK', 'ok, never expires', $details);

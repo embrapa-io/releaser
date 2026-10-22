@@ -58,20 +58,25 @@ if (!Orchestrator::exists (getenv ('ORCHESTRATOR')))
 	die ("CRITICAL > Orchestrator '". getenv ('ORCHESTRATOR') ."' defined in '.env' is not valid! \n");
 
 require_once 'class/Operation.php';
+require_once 'class/Menu.php';
 
+// Operation (descrição curta do menu — até ~50 caracteres —, método, nº de parâmetros, uso, exemplos, grupo do
+// menu, descrição completa do --help). Ver class/Menu.php.
 $_operations = [
 	'validate' => new Operation (
-		'Validate builds',
+		'Validate builds (dry run)',
 		'Controller::validate',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
-		[
+				[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all'
-		]
+		],
+		'deploy',
+		'Validate builds without deploying (dry run): clones the latest tag of each build and checks the docker-compose.yaml (external volumes, published ports, CLI services, variables).'
 	),
 	'deploy' => new Operation (
-		'Re-validate, prepare (i.e., create network) and deploy builds',
+		'Validate and deploy the latest tag of builds',
 		'Controller::deploy',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--force]',
@@ -79,10 +84,12 @@ $_operations = [
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
 			'proj-b/web@release --force'
-		]
+		],
+		'deploy',
+		'Re-validate, prepare (i.e., create network) and deploy the latest tag of builds. With --force, deploys again even if the latest tag is already deployed.'
 	),
 	'stop' => new Operation (
-		'Stop running builds (--down removes the containers; volumes are kept)',
+		'Stop builds (--down removes the containers)',
 		'Controller::stop',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--down]',
@@ -90,47 +97,58 @@ $_operations = [
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
 			'proj-b/web@release --down'
-		]
+		],
+		'deploy',
+		'Stop running builds. With --down, removes the containers of the stack (docker compose down); volumes are always kept.'
 	),
 	'restart' => new Operation (
-		'Start stopped or restart running builds',
+		'Restart builds (--upgrade renews the images)',
 		'Controller::restart',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--upgrade | --update]',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
-			'--all'
-		]
+			'--all',
+			'proj-b/web@release --upgrade'
+		],
+		'deploy',
+		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' over a renewed base image (build --pull) and recreates the containers; then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
 	),
 	'rollback' => new Operation (
-		'Rollback build to previous version',
+		'Roll a build back to a previous version',
 		'Controller::rollback',
 		2,
 		'[BUILD] [VERSION]',
-		'my-project/backend@beta 3.'. date ('y.n') .'-beta.17'
+		'my-project/backend@beta 3.'. date ('y.n') .'-beta.17',
+		'deploy',
+		'Rollback build to a previous version (tag) of the same stage.'
 	),
 	'backup' => new Operation (
-		'Generate backup of builds',
+		'Run the backup service of builds',
 		'Controller::backup',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
-		[
+				[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all'
-		]
+		],
+		'maintenance',
+		'Generate backup of builds, running the \'backup\' CLI service of each stack. Builds without it (e.g., frontends) are skipped.'
 	),
 	'sanitize' => new Operation (
-		'Run sanitize proccess',
+		'Run the sanitize service of builds',
 		'Controller::sanitize',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
-		[
+				[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all'
-		]
+		],
+		'maintenance',
+		'Run the sanitize process: the \'sanitize\' CLI service of each stack. Builds without it are skipped.'
 	),
 	'cleaner' => new Operation (
-		'Rotate backups of builds (keep last 7 daily, 4 weekly and 3 monthly)',
+		'Rotate backups (7 daily, 4 weekly, 3 monthly)',
 		'Controller::cleaner',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run]',
@@ -139,30 +157,45 @@ $_operations = [
 			'--all',
 			'proj-b/web@release --dry-run',
 			'--dry-run'
-		]
+		],
+		'maintenance',
+		'Rotate the backup files of builds: keeps the last 7 daily, 4 weekly and 3 monthly. Only files named with the build prefix and a date are considered. With --dry-run, only shows what would be deleted.'
 	),
 	'health' => new Operation (
-		'Report the health of the services of builds to the platform (core)',
+		'Report service health to the platform',
 		'Controller::health',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
-		[
+				[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all'
-		]
+		],
+		'platform',
+		'Report the health of the services of builds to the platform (core).'
 	),
 	'cve' => new Operation (
-		'Scan running images for CVEs (Trivy) and report them to the platform (core)',
+		'Scan images for CVEs and report to the platform',
 		'Controller::cve',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all]',
-		[
+				[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all'
-		]
+		],
+		'platform',
+		'Scan the running images of builds for CVEs (HIGH and CRITICAL, with Trivy) and report them to the platform (core).'
+	),
+	'check' => new Operation (
+		'Test access to GitLab (API, token and clone)',
+		'Controller::check',
+		0,
+		'',
+		[],
+		'platform',
+		'Test access to GitLab: reachability and latency of the API, expiration and scope of the token, and clone access (SSH key).'
 	),
 	'install' => new Operation (
-		'Guided setup of a new build (creates builds/<project>_<app>_<stage>.json)',
+		'Guided setup of a new build',
 		'Controller::install',
 		0,
 		'[BUILD] [--yes]',
@@ -170,37 +203,38 @@ $_operations = [
 			'',
 			'proj-a/app-1@beta',
 			'proj-a/app-1@beta --yes'
-		]
+		],
+		'setup',
+		'Guided setup of a new build: creates builds/<project>_<app>_<stage>.json with the team, Sentry, Matomo and variables fetched from the platform.'
 	),
 	'split' => new Operation (
-		'Migrate the legacy builds.json to one file per build in builds/',
+		'Migrate builds.json to one file per build',
 		'Controller::split',
 		0,
 		'',
-		[]
+		[],
+		'setup',
+		'Migrate the legacy builds.json to one file per build in builds/ (the original is kept as builds.json.bkp).'
 	),
 	'info' => new Operation (
-		'How to execute other util commands',
+		'Directories of builds and useful commands',
 		'Controller::info',
 		0,
 		'',
-		[]
+		[],
+		'setup',
+		'Show the directory of each deployed build, the last reports to the platform and how to execute other util commands.'
 	),
 	'mail' => new Operation (
-		'Test e-mail settings',
+		'Send a test e-mail (SMTP settings)',
 		'Controller::mail',
 		1,
 		'[MAIL-1,MAIL-2,...,MAIL-N]',
 		[
 			'jose.silva@embrapa.br,maria.santos@embrapa.br'
-		]
-	),
-	'check' => new Operation (
-		'Test access to GitLab (reachability, latency, token expiration and clone access)',
-		'Controller::check',
-		0,
-		'',
-		[]
+		],
+		'setup',
+		'Test e-mail settings, sending a message to the addresses informed.'
 	)
 ];
 
@@ -220,16 +254,10 @@ try
 }
 catch (Exception $e)
 {
-	echo "Usage: docker exec -it ". $container ." io COMMAND \n\n";
+	// Em modo daemon a saída vira e-mail: nada de logo, cor ou escape (Menu::plain).
+	$daemonCall = isset ($argv [1]) && strpos ($argv [1], ':daemon') !== FALSE;
 
-	echo "Commands: \n";
-
-	foreach ($_operations as $op => $obj)
-		echo "  ". str_pad ($op, 12) . $obj->info ."\n";
-
-	echo "\n";
-
-	echo "See 'docker exec -it ". $container ." io COMMAND --help' for more information on a command.";
+	echo Menu::render ($_operations, $container, $daemonCall);
 
 	// Teste rápido do acesso ao GitLab no fim do menu. Só chega aqui quem chamou o
 	// `io` sem comando (ou com um inexistente); os jobs do daemon sempre passam um.
@@ -239,13 +267,13 @@ catch (Exception $e)
 		require_once 'class/Controller.php';
 		require_once 'class/GitCheck.php';
 
-		echo "\n\nChecking access to GitLab... \n";
+		echo "\n". Menu::paint ('Checking access to GitLab...', 'dim', Menu::plain ($daemonCall)) ."\n";
 
 		echo GitCheck::summary (GitCheck::run ()) ."\n";
 	}
 	catch (\Throwable $e)
 	{
-		echo "\n\nGitLab check: impossible to run (". $e->getMessage () .") \n";
+		echo "\nGitLab check: impossible to run (". $e->getMessage () .") \n";
 	}
 
 	exit;
@@ -253,17 +281,7 @@ catch (Exception $e)
 
 if ($argc < 2 + $_operations [$_operation]->params || ($argc > 2 && trim ($argv [2]) == '--help'))
 {
-	echo "Usage: docker exec -it ". $container ." io ". $_operation ." ". $_operations [$_operation]->usage;
-
-	if (sizeof ($_operations [$_operation]->examples))
-	{
-		echo "\n\n";
-
-		echo "Examples:";
-
-		foreach ($_operations [$_operation]->examples as $ex)
-			echo "\ndocker exec -it ". $container ." io ". $_operation ." ". $ex;
-	}
+	echo Menu::help ($_operation, $_operations [$_operation], $container, $_daemon);
 
 	exit;
 }

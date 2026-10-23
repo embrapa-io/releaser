@@ -15,7 +15,7 @@ Documentação de uso (instalação, `builds.json`, comandos, modo _daemon_): ht
 | `rollback` | Volta a _build_ para uma _tag_ anterior | — |
 | `backup` | Executa o serviço `backup` da _stack_ | diário (`auto.backup`) |
 | `cleaner` | Rotaciona os arquivos do volume de _backup_: mantém os últimos **7 diários, 4 semanais, 3 mensais e 1 anual** (ou o que `RETENTION` definir no `.env`, `D/S/M/A`; `--dry-run` só mostra) | diário, após o `backup` (`auto.cleaner`: `false` padrão, `true`, ou `"undated"` para incluir arquivos sem data no nome) |
-| `cloud` | Copia os arquivos de _backup_ para um _bucket_ S3 compatível (AWS, R2, B2, MinIO; `S3_*` no `.env`), em `<bucket>/<projeto>/<app>/<estágio>/`, e os rotaciona lá com `S3_RETENTION` (`--dry-run` só mostra; `--list` lista o _bucket_). Não é espelho nem restaura | diário, após o `cleaner` (`auto.cloud`: `false` padrão, `true` ou `"undated"`) |
+| `cloud` | Copia os arquivos de _backup_ para um _bucket_ S3 compatível (AWS, R2, B2, MinIO; `S3_*` no `.env`), em `<bucket>/<projeto>/<app>/<estágio>/`, e os rotaciona lá com `S3_RETENTION` (`--dry-run` só mostra; `--list` lista o _bucket_; `--verify` confere por _hash_ os arquivos que estão nos dois lados; `--setup` faz as perguntas do _bucket_ e grava o `.env`). Não é espelho nem restaura | diário, após o `cleaner` (`auto.cloud`: `false` padrão, `true` ou `"undated"`) |
 | `sanitize` | Executa o serviço `sanitize` da _stack_ | mensal (`auto.sanitize`) |
 | `health` / `cve` | Relatam ao _core_ a saúde dos serviços / as CVEs (Trivy) das imagens em execução | a cada minuto / de hora em hora (`stats.health` / `stats.cve`) |
 | `check` | Testa o acesso ao GitLab (API, _token_ e _clone_) e, se configurado, ao _bucket_ S3 | diário |

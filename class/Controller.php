@@ -220,11 +220,15 @@ class Controller
     {
         global $_daemon, $_data;
 
-        // `io cloud --dry-run` (ou `--list`), sem lista de builds, equivale a `--all --dry-run`
-        if (in_array (trim ((string) $slice), [ '--dry-run', '--list' ])) { $flag = trim ($slice); $slice = '--all'; }
+        // `io cloud --setup` (perguntas do S3 e da retenção) é interativo e roda no entrypoint `io` (bin/io), não aqui
+        if (trim ((string) $slice) === '--setup')
+            throw new Exception ("'cloud --setup' is interactive and runs in the 'io' entrypoint: docker exec -it releaser io cloud --setup");
 
-        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--dry-run', '--list' ]))
-            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run' and '--list'");
+        // `io cloud --dry-run` (ou `--list`, `--verify`), sem lista de builds, equivale a `--all --dry-run` etc.
+        if (in_array (trim ((string) $slice), [ '--dry-run', '--list', '--verify' ])) { $flag = trim ($slice); $slice = '--all'; }
+
+        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--dry-run', '--list', '--verify' ]))
+            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run', '--list', '--verify' and '--setup'");
 
         $_builds = self::getBuilds ($_data, $slice);
 

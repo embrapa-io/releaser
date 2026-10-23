@@ -444,6 +444,71 @@ abstract class Orchestrator
     }
 
     /**
+     * `io cloud --verify`: confere por hash (MD5) os arquivos da build que existem
+     * no volume E no bucket (Cloud::verify). Arquivos só de um lado são listados,
+     * não são erro (a retenção do bucket pode guardar mais ou menos que a do
+     * volume). Lança exceção se algum arquivo difere ou não pôde ser conferido.
+     *
+     * @return array ['verified' => int, 'differ' => [names], 'only_volume' => int, 'only_bucket' => int]
+     */
+    public static function cloudVerify ($path, $namespace, $dir)
+    {
+        $volume = static::backupVolume ($path, $namespace);
+
+        echo "INFO > Backup volume: '". $volume ."' \n";
+
+        list ($local, $trash) = BackupVolume::split (BackupVolume::files ($volume), $namespace);
+
+        echo "INFO > Bucket: '". Cloud::url ($dir) ."' at '". Cloud::value ('S3_ENDPOINT') ."' \n";
+
+        list ($remote, $trash) = BackupVolume::split (Cloud::files ($dir), $namespace);
+
+        $inBucket = array_column ($remote, NULL, 'name');
+
+        $both = [];
+        $onlyVolume = [];
+
+        foreach (static::newestFirst ($local) as $file)
+            if (array_key_exists ($file ['name'], $inBucket)) $both [] = $file; else $onlyVolume [] = $file;
+
+        $onlyBucket = sizeof ($remote) - sizeof ($both);
+
+        echo "INFO > Files of this build: ". sizeof ($local) ." in the volume, ". sizeof ($remote) ." in the bucket, ". sizeof ($both) ." in both (". sizeof ($onlyVolume) ." only in the volume, ". $onlyBucket ." only in the bucket). \n";
+
+        $stats = [ 'verified' => 0, 'differ' => [], 'only_volume' => sizeof ($onlyVolume), 'only_bucket' => $onlyBucket ];
+
+        if (!sizeof ($both))
+        {
+            echo "WARNING > Nothing to verify: no file of this build is in both the volume and the bucket. \n";
+
+            return $stats;
+        }
+
+        echo "INFO > Verifying ". sizeof ($both) ." file(s) by hash (MD5), volume against bucket... \n";
+
+        $result = Cloud::verify ($volume, $dir, array_column ($both, 'name'));
+
+        $labels = [ '=' => 'OK', '*' => 'DIFFER', '-' => 'MISSING', '!' => 'ERROR', '+' => 'ONLY REMOTE' ];
+
+        foreach ($both as $file)
+        {
+            $mark = $result ['status'][$file ['name']] ?? '!';
+
+            if ($mark === '=') $stats ['verified']++; else $stats ['differ'][] = $file ['name'];
+
+            echo "  ". str_pad ($labels [$mark] ?? $mark, 8) . str_pad (static::humanSize ($file ['size']), 10) . $file ['name'] ."\n";
+        }
+
+        foreach ($result ['notes'] as $line)
+            echo "  ". $line ."\n";
+
+        if (sizeof ($stats ['differ']))
+            throw new Exception (sizeof ($stats ['differ']) ." of ". sizeof ($both) ." file(s) differ between the volume and the bucket (or could not be verified): ". implode (', ', array_slice ($stats ['differ'], 0, 5)) . (sizeof ($stats ['differ']) > 5 ? ', ...' : ''));
+
+        return $stats;
+    }
+
+    /**
      * Descobre o nome do volume de backup da build. Convenção da plataforma:
      * '{project}_{app}_{stage}_backup'. Se o docker-compose.yaml interpolado
      * declarar um volume chamado 'backup' (ou cujo nome termine em '_backup'),

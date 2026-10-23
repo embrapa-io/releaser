@@ -16,7 +16,7 @@ Há duas partes:
 O Releaser pode copiar, todo dia, os arquivos de _backup_ de cada _build_ para um _bucket_ S3 compatível — AWS S3, Cloudflare R2, Backblaze B2, MinIO ou qualquer serviço com a API do S3 —, guardando uma cópia fora do servidor. O _bucket_ é configurado **uma única vez** no `.env` do Releaser e a cópia é ligada **por _build_**, no atributo `auto.cloud`.
 
 ```bash
-docker exec -it releaser io cloud [BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list]
+docker exec -it releaser io cloud [BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list | --verify]
 ```
 
 Exemplos:
@@ -30,6 +30,9 @@ docker exec -it releaser io cloud meu-projeto/api@release
 
 # lista o que há no bucket para a build
 docker exec -it releaser io cloud meu-projeto/api@release --list
+
+# confere, por hash, os arquivos que estão no volume e no bucket
+docker exec -it releaser io cloud meu-projeto/api@release --verify
 ```
 
 Em modo _daemon_, o comando roda uma vez por dia, **depois** do `backup` e do `cleaner`, para as _builds_ com `auto.cloud` ligado.
@@ -180,6 +183,21 @@ INFO > 16 file(s), 2,2 GB [D/W/M/Y = kept by the next rotation, - = deleted by i
   ?   12,0 MB   2026-03-02 15:10  meu-projeto_api_release_dump-antes-da-migracao.sql.gz
 ```
 
+#### Conferindo a cópia (`--verify`)
+
+`io cloud <build> --verify` compara, por _hash_ (MD5), cada arquivo da _build_ que existe **no volume e no _bucket_** — os que estão só de um lado são contados e listados, mas não são erro (a retenção do _bucket_ pode guardar mais ou menos que a do volume). Nada é enviado nem apagado. Qualquer arquivo diferente aparece como `DIFFER` e a _build_ termina em `ERROR`:
+
+```
+INFO > Files of this build: 11 in the volume, 7 in the bucket, 7 in both (4 only in the volume, 0 only in the bucket).
+INFO > Verifying 7 file(s) by hash (MD5), volume against bucket...
+  OK      143,2 MB  meu-projeto_api_release_1.26.9-1_2026-10-23_02-00-00.tar.gz
+  DIFFER  142,9 MB  meu-projeto_api_release_1.26.9-1_2026-10-22_02-00-00.tar.gz
+  ...
+ERROR > Verification of build failed. 1 of 7 file(s) differ between the volume and the bucket (or could not be verified): ...!
+```
+
+A conferência lê os arquivos inteiros no volume (para calcular o MD5) e consulta o _hash_ guardado pelo provedor; em _buckets_ grandes, demora o tempo de ler os arquivos. O envio normal já confere o MD5 de cada arquivo ao terminar (o `rclone` não é chamado com `--ignore-checksum` nem `--size-only`), inclusive nos envios em partes (_multipart_), em que o MD5 fica gravado como metadado do objeto.
+
 #### Segurança
 
 - As credenciais ficam só no `.env` do Releaser. O Releaser as entrega ao `rclone` por variáveis de ambiente do processo: não há arquivo de configuração do `rclone`, e as chaves não aparecem na linha de comando (`ps`) nem na saída, nos e-mails ou nos _logs_.
@@ -275,4 +293,4 @@ Acrescentar:
 
 | Comando | Descrição | _Daemon_ |
 |---|---|---|
-| `cloud` | Copia os _backups_ para um _bucket_ S3 e os rotaciona lá (`--dry-run` só mostra; `--list` lista o _bucket_) | diário, após o `cleaner` (`auto.cloud`) |
+| `cloud` | Copia os _backups_ para um _bucket_ S3 e os rotaciona lá (`--dry-run` só mostra; `--list` lista o _bucket_; `--verify` confere por _hash_; `--setup` configura o _bucket_ no `.env`) | diário, após o `cleaner` (`auto.cloud`) |

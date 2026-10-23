@@ -6,9 +6,13 @@ $_dryRun = $_mode === '--dry-run';
 
 $_list = $_mode === '--list';
 
-echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to copy to the CLOUD (S3 bucket)... \n";
+$_verify = $_mode === '--verify';
+
+echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to ". ($_verify ? 'VERIFY in' : 'copy to') ." the CLOUD (S3 bucket)... \n";
 
 if ($_dryRun) echo "INFO > Dry run: nothing will be uploaded to or deleted from the bucket. \n";
+
+if ($_verify) echo "INFO > Verify: the files in both the volume and the bucket are compared by hash; nothing is uploaded or deleted. \n";
 
 // 'auto.cloud': false/ausente (desligado), true ou "undated" — ver Retention::policy().
 // Em modo daemon só rodam as builds com a cópia ligada; em execução manual, todas.
@@ -116,6 +120,30 @@ foreach ($_builds as $_build => $_b)
 	if (!file_exists ($clone) || !is_dir ($clone))
 	{
 		echo "ERROR > The clone of version/tag '". $_last ."' is missing! \n\n";
+
+		continue;
+	}
+
+	if ($_verify)
+	{
+		try
+		{
+			$result = $orchestrator::cloudVerify ($clone, $namespace, $dir);
+		}
+		catch (SkipException $e)
+		{
+			echo "WARNING > Nothing to do. ". $e->getMessage () .". Skipping this build. \n\n";
+
+			continue;
+		}
+		catch (Exception $e)
+		{
+			echo "ERROR > Verification of build failed. ". Cloud::mask ($e->getMessage ()) ."! \n\n";
+
+			continue;
+		}
+
+		echo "SUCCESS > All done! Build '". $_build ."': ". $result ['verified'] ." file(s) verified in the bucket, identical to the volume. \n";
 
 		continue;
 	}

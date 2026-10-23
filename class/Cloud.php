@@ -185,6 +185,53 @@ class Cloud
             throw new Exception ("Unable to upload to the bucket (". self::reason ($result) .")");
     }
 
+    /**
+     * Confere, por hash (MD5), os arquivos $names do volume contra os do bucket
+     * (`rclone check --one-way`, no contêiner auxiliar com o volume em modo
+     * leitura). Só os nomes pedidos (filtro exato): o chamador passa os que
+     * existem nos dois lados. Nada é copiado nem apagado.
+     *
+     * @return array ['status' => [name => '=' (igual) | '*' (difere) | '-' (não está no bucket) | '!' (erro)], 'notes' => [linhas do rclone]]
+     */
+    static public function verify ($volume, $dir, array $names)
+    {
+        if (!sizeof ($names)) return [ 'status' => [], 'notes' => [] ];
+
+        $env = self::env ();
+
+        $filters = [];
+
+        foreach ($names as $name)
+            $filters [] = '--include '. escapeshellarg ('/'. self::glob ($name));
+
+        // --combined -: uma linha por arquivo no stdout ('= nome', '* nome', '- nome', '! nome')
+        $cmd = BackupVolume::docker ($volume, FALSE, TRUE, array_keys ($env))
+            .' rclone check '. BackupVolume::MOUNT .' '. escapeshellarg (self::path ($dir))
+            .' --one-way --max-depth 1 '. implode (' ', $filters) .' --combined - --stats 0';
+
+        echo 'COMMAND > '. $cmd ."\n";
+
+        $result = BackupVolume::command ($cmd, $env);
+
+        // 0 = tudo igual; 1 = há diferenças (o veredito está no stdout); outro = não conseguiu conferir
+        if (!in_array ($result ['code'], [ 0, 1 ]))
+            throw new Exception ("Unable to verify the files in the bucket (". self::reason ($result) .")");
+
+        $status = [];
+
+        foreach ($result ['out'] as $line)
+            if (preg_match ('/^([=*!+-]) (.+)$/', $line, $m)) $status [$m [2]] = $m [1];
+
+        // avisos do rclone que importam: hashes que não puderam ser conferidos, erros
+        $notes = [];
+
+        foreach ($result ['err'] as $line)
+            if (preg_match ('/hashes could not be checked|ERROR/', $line) && !preg_match ('/: (sizes|md5|sha1|hash) differ$|Failed to check/i', $line))
+                $notes [] = self::mask (mb_strimwidth (preg_replace ('/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\s+/', '', $line), 0, 300, '...'));
+
+        return [ 'status' => $status, 'notes' => $notes ];
+    }
+
     /** Apaga do bucket, um a um (`deletefile`: só o arquivo nomeado, nunca um diretório). */
     static public function delete ($dir, array $names)
     {

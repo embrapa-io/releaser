@@ -165,15 +165,17 @@ $_operations = [
 		'Copy backups to an S3 bucket (and rotate them)',
 		'Controller::cloud',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list | --verify] | --setup',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
 			'proj-b/web@release --dry-run',
-			'proj-b/web@release --list'
+			'proj-b/web@release --list',
+			'proj-b/web@release --verify',
+			'--setup'
 		],
 		'maintenance',
-		'Copy the backup files of builds to an S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO), set once in the \'.env\' file (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and, optionally, S3_REGION), in <bucket>/<project>/<app>/<stage>/. Only uploads what is missing in the bucket (never a mirror: nothing is deleted from it because it left the volume) and then rotates the files in the bucket with S3_RETENTION (\'D/W/M/Y\'; default: RETENTION, or 7/4/3/1). With --dry-run, only shows what would be uploaded and deleted; with --list, only lists the files of the build in the bucket.'
+		'Copy the backup files of builds to an S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO), set once in the \'.env\' file (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and, optionally, S3_REGION), in <bucket>/<project>/<app>/<stage>/. Only uploads what is missing in the bucket (never a mirror: nothing is deleted from it because it left the volume) and then rotates the files in the bucket with S3_RETENTION (\'D/W/M/Y\'; default: RETENTION, or 7/4/3/1). With --dry-run, only shows what would be uploaded and deleted; with --list, only lists the files of the build in the bucket; with --verify, compares by hash (MD5) the files that are in both the volume and the bucket, without uploading or deleting anything. \'io cloud --setup\' asks for the bucket settings and the retention and writes them to the \'.env\' file.'
 	),
 	'health' => new Operation (
 		'Report service health to the platform',

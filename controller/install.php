@@ -183,7 +183,17 @@ foreach (glob ($dir . DIRECTORY_SEPARATOR .'*.json') ?: [] as $other)
 		if (preg_match ('/^\d{4,5}$/', (string) $value) && (int) $value >= 1024 && (int) $value <= 65535) $usedPorts [(int) $value] = basename ($other);
 }
 
-exec (DockerCompose::DOCKER .' run --rm --network host '. Orchestrator::CLEANER_IMAGE .' sh -c "netstat -tln 2>/dev/null || ss -tln" 2>/dev/null', $listening, $return);
+// portas em uso no host: netstat num contêiner auxiliar da própria imagem do Releaser, na rede do host
+try
+{
+	$return = 1;
+
+	exec (DockerCompose::DOCKER .' run --rm --network host '. escapeshellarg (BackupVolume::image ()) .' sh -c "netstat -tln 2>/dev/null || ss -tln" 2>/dev/null', $listening, $return);
+}
+catch (Exception $e)
+{
+	echo "WARNING > Unable to check the ports in use on the host: ". $e->getMessage () .". \n";
+}
 
 if ($return === 0)
 	foreach ($listening as $line)
@@ -272,7 +282,7 @@ $definition = [
 	'team' => $team,
 	'sentry' => [ 'dsn' => $dsn ],
 	'matomo' => [ 'id' => $matomoId, 'token' => $matomoToken ],
-	'auto' => [ 'deploy' => TRUE, 'backup' => TRUE, 'sanitize' => TRUE, 'cleaner' => FALSE ],
+	'auto' => [ 'deploy' => TRUE, 'backup' => TRUE, 'sanitize' => TRUE, 'cleaner' => FALSE, 'cloud' => FALSE ],
 	'stats' => [ 'version' => TRUE, 'cve' => TRUE, 'health' => TRUE ],
 	'env' => (object) $env
 ];

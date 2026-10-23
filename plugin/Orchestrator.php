@@ -12,9 +12,6 @@ abstract class Orchestrator
     const SSH = '/usr/bin/ssh';
     const DOCKER = '/usr/bin/docker';
 
-    // Imagem mínima usada para listar/apagar arquivos dentro do volume de backup.
-    const CLEANER_IMAGE = 'alpine:3';
-
     // Tempo máximo do pull e do build do `restart --upgrade` (o mesmo do deployer da plataforma).
     const UPGRADE_TIMEOUT = 1200;
 
@@ -160,8 +157,9 @@ abstract class Orchestrator
     /**
      * Rotaciona os arquivos do volume externo de backup da build, aplicando a
      * política de retenção (ver Retention). Compartilhado pelos orquestradores:
-     * o volume é acessado diretamente pelo Docker (docker run -v), sem depender
-     * do serviço 'backup' da stack da aplicação.
+     * o volume é acessado diretamente pelo Docker (BackupVolume, um contêiner
+     * auxiliar da imagem do Releaser), sem depender do serviço 'backup' da stack
+     * da aplicação.
      *
      * @return array Plano executado: ['keep' => [name => tags], 'delete' => [names]]
      */
@@ -171,27 +169,19 @@ abstract class Orchestrator
 
         echo "INFO > Backup volume: '". $volume ."' \n";
 
-        $all = static::listBackupFiles ($volume);
-
-        // Só os arquivos DESTA build ('{project}_{app}_{stage}_...'): o mesmo
-        // volume/diretório pode ser compartilhado por várias builds (dica das
-        // docs do Releaser) e arquivos de outras builds jamais são tocados.
+        // Só os arquivos DESTA build ('{project}_{app}_{stage}_...'): ver BackupVolume::split ().
         $prefix = $namespace .'_';
 
-        $files = [];
-        $foreign = 0;
+        list ($files, $others) = BackupVolume::split (BackupVolume::files ($volume), $namespace);
 
-        foreach ($all as $file)
-            if (strpos ($file ['name'], $prefix) === 0) $files [] = $file; else $foreign++;
-
-        $bytes = function ($list) { $t = 0; foreach ($list as $f) $t += intval ($f ['size'] ?? 0); return $t; };
+        $foreign = sizeof ($others);
 
         $stats = [
             'volume' => $volume,
             'files_before' => sizeof ($files),
-            'bytes_before' => $bytes ($files),
+            'bytes_before' => BackupVolume::bytes ($files),
             'foreign' => $foreign,
-            'bytes_foreign' => $bytes (array_filter ($all, function ($f) use ($prefix) { return strpos ($f ['name'], $prefix) !== 0; }))
+            'bytes_foreign' => BackupVolume::bytes ($others)
         ];
 
         if ($foreign)
@@ -241,7 +231,7 @@ abstract class Orchestrator
         foreach ($plan ['delete'] as $name)
             echo "  ". str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
 
-        if (!$dryRun) static::deleteBackupFiles ($volume, $plan ['delete']);
+        if (!$dryRun) BackupVolume::delete ($volume, $plan ['delete']);
 
         return $plan;
     }
@@ -267,7 +257,7 @@ abstract class Orchestrator
 
             chdir ($path);
 
-            exec ('env $(cat .env.sh) '. static::DOCKER_COMPOSE .' config 2> /dev/null', $output, $return);
+            exec (self::env ('.env.sh') .' '. static::DOCKER_COMPOSE .' config 2> /dev/null', $output, $return);
 
             chdir ($cwd);
 
@@ -335,57 +325,6 @@ abstract class Orchestrator
         while ($value >= 1024 && $i < sizeof ($units) - 1) { $value /= 1024; $i++; }
 
         return number_format ($value, $i ? 1 : 0, ',', '.') .' '. $units [$i];
-    }
-
-    /**
-     * Lista os arquivos regulares na raiz do volume: [['name' => string, 'mtime' => int, 'size' => int], ...]
-     */
-    protected static function listBackupFiles ($volume)
-    {
-        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup:ro '. static::CLEANER_IMAGE .' find /backup -maxdepth 1 -type f -exec stat -c "%Y|%s|%n" {} +';
-
-        echo 'COMMAND > '. $cmd ."\n";
-
-        exec ($cmd .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-        {
-            echo implode ("\n", $output) ."\n";
-
-            throw new Exception ("Unable to list the files of volume '". $volume ."'");
-        }
-
-        $files = [];
-
-        foreach ($output as $line)
-        {
-            if (!preg_match ('/^(\d+)\|(\d+)\|\/backup\/(.+)$/', trim ($line), $m)) continue;
-
-            $files [] = [ 'name' => $m [3], 'mtime' => intval ($m [1]), 'size' => intval ($m [2]) ];
-        }
-
-        return $files;
-    }
-
-    protected static function deleteBackupFiles ($volume, array $names)
-    {
-        $args = [];
-
-        foreach ($names as $name)
-            $args [] = escapeshellarg ('/backup/'. $name);
-
-        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup '. static::CLEANER_IMAGE .' rm -f -- '. implode (' ', $args);
-
-        echo 'COMMAND > '. $cmd ."\n";
-
-        exec ($cmd .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-        {
-            echo implode ("\n", $output) ."\n";
-
-            throw new Exception ("Unable to delete the files of volume '". $volume ."'");
-        }
     }
 
     public static function checkSSHConnection ($host, $timeout = 30)

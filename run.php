@@ -331,6 +331,7 @@ require_once 'class/GitLab.php';
 require_once 'class/GitClient.php';
 require_once 'class/Controller.php';
 require_once 'class/Retention.php';
+require_once 'class/BackupVolume.php';
 require_once 'class/Report.php';
 require_once 'class/Trivy.php';
 require_once 'class/GitCheck.php';

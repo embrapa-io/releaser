@@ -22,6 +22,7 @@ RUN set -ex \
  && apk add --update --no-cache \
     docker \
     findmnt \
+    rclone \
     sshfs \
     yaml-dev \
  && curl -L https://github.com/docker/compose/releases/download/v2.35.1/docker-compose-linux-$(uname -m) > /usr/bin/docker-compose \

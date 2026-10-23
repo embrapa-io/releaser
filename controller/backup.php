@@ -68,4 +68,13 @@ foreach ($_builds as $_build => $_b)
 	}
 
 	echo "SUCCESS > All done! Version '". $_last ."' of build '". $_build ."' was successfully backed up! \n";
+
+	// Dica da cópia em nuvem (só em execução manual: no daemon o 'cloud' roda logo depois do 'backup').
+	// Sem S3 configurado no .env, nada; com 'auto.cloud' desligado, avisa que o daemon não copiará.
+	if (!$_daemon && Cloud::configured ())
+	{
+		$autoCloud = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;
+
+		echo "INFO > To copy this backup to the S3 bucket now, run: io cloud ". $_build . (Retention::policy ($autoCloud) === FALSE ? ". The daily daemon will not copy it unless the build file has \"auto\": { \"cloud\": true }" : '') ." \n";
+	}
 }

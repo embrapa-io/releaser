@@ -237,6 +237,23 @@ class Controller
         require self::PATH .'cloud.php';
     }
 
+    static public function cli ($flag = NULL, $flag2 = NULL)
+    {
+        $_flags = [];
+
+        foreach ([ $flag, $flag2 ] as $f)
+        {
+            if ($f === NULL) continue;
+
+            if (!in_array (trim ((string) $f), [ '--print', '--uninstall', '--yes' ]))
+                throw new Exception ("Unknown parameter '". $f ."'. The options accepted by 'cli' are '--print', '--uninstall' and '--yes'");
+
+            $_flags [] = trim ($f);
+        }
+
+        require self::PATH .'cli.php';
+    }
+
     static public function info ()
     {
         global $_data;

@@ -333,7 +333,7 @@ if [ ! -d "/data" ] || [ ! -f "/data/.env" ]; then
   banner
 
   export IO_BANNER=shown
-elif [ $# -gt 0 ]; then
+elif [ $# -gt 0 ] && ! { [ "$1" = cli ] && [ "${2:-}" = --print ]; }; then
   echo ""
   echo "${D}Embrapa I/O Releaser ${IO_RELEASER_VERSION:-dev} · https://embrapa.io/docs/releaser/${N}"
 fi
@@ -460,6 +460,11 @@ if [ ! -f "/data/.env" ]; then
 fi
 
 export $(cat /data/.env)
+
+# `io cli --print`: só o script do wrapper do host no stdout (para `| sudo tee /usr/local/bin/io`), sem mais nada.
+if [ "${1:-}" = "cli" ] && [ "${2:-}" = "--print" ]; then
+  exec /usr/local/bin/php /app/run.php "$@"
+fi
 
 # `io cloud --setup`: perguntas da retenção e do bucket S3 numa instalação que já tem o .env.
 if [ "${1:-}" = "cloud" ] && [ "${2:-}" = "--setup" ]; then

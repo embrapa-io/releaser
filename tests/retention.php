@@ -62,7 +62,7 @@ check ('parse: válida', Retention::parse ('30/12/12/5') === [ 'daily' => 30, 'w
 check ('parse: com \r do Windows', Retention::parse ("14/8/6/2\r") === [ 'daily' => 14, 'weekly' => 8, 'monthly' => 6, 'yearly' => 2 ]);
 check ('parse: zeros', Retention::parse ('0/0/0/0') === [ 'daily' => 0, 'weekly' => 0, 'monthly' => 0, 'yearly' => 0 ]);
 
-foreach ([ '7/4/3', '7/4/3/1/2', '7/4/-3/1', '7/4/3.5/1', 'a/b/c/d', '7,4,3,1', '7/4//1', '7 / 4 / 3 / 1', '/7/4/3/1', 'true' ] as $bad)
+foreach ([ '7/4/3', '7/4/3/1/2', '7/4/-3/1', '7/4/3.5/1', 'a/b/c/d', '7,4,3,1', '7/4//1', '7 / 4 / 3 / 1', '/7/4/3/1', 'true', '12345/4/3/1' ] as $bad)
 {
 	try
 	{
@@ -188,6 +188,47 @@ $old = daily ('2024-05-01', '2024-05-07');
 $plan = Retention::plan ($old, policy (''));
 
 check ('sem backups novos há anos: os 7 últimos continuam (nada é apagado)', sizeof ($plan ['keep']) === 7 && !sizeof ($plan ['delete']));
+
+// a rotação incremental (um backup novo por dia, apagando a cada dia) chega ao mesmo
+// conjunto que o plano calculado de uma vez sobre o histórico completo: a ordem das
+// exclusões não muda a escolha, e nenhum arquivo apagado num dia seria mantido depois
+foreach ([ '7/4/3/1', '7/4/3/2', '14/8/12/3', '3/1/1/1' ] as $spec)
+{
+	$survivors = [];
+	$history = [];
+	$mismatch = NULL;
+
+	foreach (daily ('2025-01-01', '2027-03-01') as $file)
+	{
+		$history [] = $file;
+		$survivors [] = $file;
+
+		$plan = Retention::plan ($survivors, policy ($spec));
+
+		$survivors = array_values (array_filter ($survivors, function ($f) use ($plan) { return !in_array ($f ['name'], $plan ['delete']); }));
+
+		$kept = array_column ($survivors, 'name');
+		$full = array_keys (Retention::plan ($history, policy ($spec)) ['keep']);
+
+		sort ($kept);
+		sort ($full);
+
+		if ($kept !== $full && $mismatch === NULL) $mismatch = $file ['name'];
+	}
+
+	check ('incremental diário por 2 anos = plano sobre o histórico completo ('. $spec .')', $mismatch === NULL, 'primeira divergência em '. $mismatch);
+}
+
+// semana ISO na virada do ano: 28/12/2026 a 03/01/2027 é UMA semana (2026-W53); a chave
+// usa o ano ISO ('o'), senão a semana se partiria em duas e um arquivo a mais ficaria
+$got = kept (Retention::plan (daily ('2026-11-01', '2027-01-10'), policy ('0/4/0/0')));
+
+check ('semana ISO na virada do ano: 4 semanais = 10/01, 03/01, 27/12 e 20/12', $got === [ '2027-01-10' => 'W', '2027-01-03' => 'W', '2026-12-27' => 'W', '2026-12-20' => 'W' ], json_encode ($got));
+
+// virada de mês: no dia 8 o dia 1º sai dos diários e vira o mensal do mês corrente
+$got = kept (Retention::plan (daily ('2026-06-01', '2026-10-08'), policy ('7/0/3/0')));
+
+check ('virada de mês: 1º do mês corrente vira M ao sair dos diários', ($got ['2026-10-01'] ?? '') === 'M' && ($got ['2026-09-01'] ?? '') === 'M' && ($got ['2026-08-01'] ?? '') === 'M' && !isset ($got ['2026-07-01']), json_encode ($got));
 
 // ---------------------------------------------------------------------------
 // arquivos sem data no nome

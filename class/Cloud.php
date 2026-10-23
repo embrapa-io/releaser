@@ -126,9 +126,11 @@ class Cloud
 
         $result = BackupVolume::command ($cmd, self::env ());
 
-        // 3 = diretório não encontrado: nada foi copiado ainda para esta build
-        if ($result ['code'] === 3) return [];
-
+        // Um diretório ainda sem arquivos (primeira cópia da build) devolve [] com
+        // código 0: no S3 não há diretórios, só prefixos. O código 3 ("directory not
+        // found") vem do 404 do provedor, ou seja, do BUCKET inexistente (S3_BUCKET
+        // errado): é erro, nunca "bucket vazio" — senão `--list` diria "nenhum
+        // arquivo" e a cópia acusaria o erro só no envio (ou em nada, sem envio).
         $list = json_decode (implode ("\n", $result ['out']), TRUE);
 
         if ($result ['code'] !== 0 || !is_array ($list))
@@ -236,9 +238,10 @@ class Cloud
         if (in_array ($result ['code'], [ 124, 143, 15 ]))
             return self::result ('ERROR', 'unreachable: no answer in '. self::CHECK_TIMEOUT .' s (timeout; blocked?)', [ 'alert' => TRUE ]);
 
-        // 3 = diretório não encontrado: na raiz do remote, o próprio bucket
-        if ($result ['code'] === 3 && !preg_match ('/AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch/i', implode (' ', $result ['err'])))
-            return self::result ('ERROR', "bucket '". $bucket ."' not found (create it in the provider)", [ 'alert' => TRUE ]);
+        // 3 = "directory not found" = 404 do provedor: o bucket não existe (chave
+        // recusada dá código 1, com AccessDenied/SignatureDoesNotMatch no stderr)
+        if ($result ['code'] === 3)
+            return self::result ('ERROR', "bucket '". $bucket ."' not found (create it in the provider, or fix S3_BUCKET)", [ 'alert' => TRUE ]);
 
         return self::result ('ERROR', self::reason ($result), [ 'alert' => TRUE ]);
     }
@@ -250,8 +253,13 @@ class Cloud
 
         $bucket = self::value ('S3_BUCKET');
 
-        if (preg_match ('/NoSuchBucket|bucket.*(not found|does not exist)/i', $text))
-            return "bucket '". $bucket ."' not found (create it in the provider)";
+        // 'directory not found' (código 3) é o 404 do provedor: no S3 só o bucket
+        // inexistente responde assim (um prefixo vazio lista [] com código 0)
+        if (preg_match ('/NoSuchBucket|bucket.*(not found|does not exist)|directory not found/i', $text))
+            return "bucket '". $bucket ."' not found (create it in the provider, or fix S3_BUCKET)";
+
+        if (preg_match ('/AuthorizationHeaderMalformed|IllegalLocationConstraintException|PermanentRedirect|region .{0,60}(wrong|invalid|does not match)/i', $text))
+            return 'wrong S3_REGION (AWS and Backblaze B2 expect the real region of the bucket, e.g., sa-east-1 or us-east-005)';
 
         if (preg_match ('/InvalidAccessKeyId|SignatureDoesNotMatch|AccessDenied|InvalidToken|Unauthorized|status code: 40[13]|\b40[13]\b/i', $text))
             return 'access denied (check S3_ACCESS_KEY, S3_SECRET_KEY, S3_REGION and the permissions of the key on the bucket)';
@@ -264,9 +272,6 @@ class Cloud
 
         if (preg_match ('/i\/o timeout|deadline exceeded|timed out/i', $text))
             return 'no answer from S3_ENDPOINT (timeout; blocked?)';
-
-        if (preg_match ('/directory not found/i', $text))
-            return "directory not found in bucket '". $bucket ."'";
 
         // a última linha de erro do rclone, sem o carimbo de data/hora
         $lines = array_values (array_filter (array_merge ($result ['err'], $result ['out']), function ($l) { return stripos ($l, 'ERROR') !== FALSE || stripos ($l, 'Failed') !== FALSE; }));

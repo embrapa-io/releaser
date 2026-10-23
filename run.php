@@ -269,11 +269,11 @@ catch (Exception $e)
 
 		echo "\n". Menu::paint ('Checking access to GitLab...', 'dim', Menu::plain ($daemonCall)) ."\n";
 
-		echo GitCheck::summary (GitCheck::run ()) ."\n";
+		echo GitCheck::summary (GitCheck::run (), Menu::plain ($daemonCall)) ."\n\n";
 	}
 	catch (\Throwable $e)
 	{
-		echo "\nGitLab check: impossible to run (". $e->getMessage () .") \n";
+		echo "\nGitLab check: impossible to run (". $e->getMessage () .") \n\n";
 	}
 
 	exit;

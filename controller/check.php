@@ -38,7 +38,7 @@ echo $prefix [$check ['clone']['status']] ." > ". $check ['clone']['via'] .": ".
 
 echo "\n";
 
-echo GitCheck::summary ($check) ."\n";
+echo GitCheck::summary ($check, Menu::plain ($_daemon)) ."\n";
 
 // No daemon (diário), e-mail só quando há o que fazer: token vencido, revogado,
 // sem escopo ou perto de vencer, ou clone recusado. GitLab fora do ar por um

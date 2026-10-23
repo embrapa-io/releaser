@@ -3,9 +3,9 @@
 /**
  * Menu e `--help` do `io`. Descrições curtas no menu (até ~50 caracteres),
  * agrupadas e quebradas pela largura real do terminal, com recuo; o detalhe
- * vai para o `--help` de cada comando. Cabeçalho com a logo do Embrapa I/O,
+ * vai para o `--help` de cada comando. Cabeçalho com o nome,
  * a versão e o servidor. Cores ANSI só quando a saída é um terminal (e sem
- * NO_COLOR): em modo daemon a saída vira e-mail e não leva logo, cor nem
+ * NO_COLOR): em modo daemon a saída vira e-mail e não leva cabeçalho, cor nem
  * código de escape.
  */
 class Menu
@@ -15,14 +15,6 @@ class Menu
         'maintenance' => 'Maintenance',
         'platform' => 'Platform',
         'setup' => 'Setup'
-    ];
-
-    // "I/O" na fonte "small" do FIGlet: 4 linhas, 17 colunas.
-    const LOGO = [
-        ' ___    __  ___  ',
-        '|_ _|  / / / _ \\ ',
-        ' | |  / / | (_) |',
-        '|___|/_/   \\___/ '
     ];
 
     const MIN_WIDTH = 40;
@@ -93,10 +85,10 @@ class Menu
             self::paint ('https://embrapa.io/docs/releaser/', 'dim', $plain)
         ];
 
-        $out = '';
+        $out = "\n";
 
-        foreach (self::LOGO as $i => $row)
-            $out .= ' '. self::paint ($row, 'green', $plain) .'  '. $lines [$i] ."\n";
+        foreach ($lines as $line)
+            $out .= $line ."\n";
 
         return $out;
     }
@@ -117,7 +109,7 @@ class Menu
 
         foreach ($operations as $op => $obj) $name = max ($name, strlen ($op));
 
-        $column = 4 + $name + 2;
+        $column = 2 + $name + 2;
 
         $groups = [];
 
@@ -131,7 +123,7 @@ class Menu
             $out .= "\n". self::paint ($label, 'bold', $plain) ."\n";
 
             foreach ($groups [$key] as $op => $obj)
-                $out .= '    '. self::paint (str_pad ($op, $name + 2), 'cyan', $plain) . self::wrap ($obj->info, $width, $column) ."\n";
+                $out .= '  '. self::paint (str_pad ($op, $name + 2), 'cyan', $plain) . self::wrap ($obj->info, $width, $column) ."\n";
         }
 
         $out .= "\n". self::wrap ("Run 'docker exec -it ". $container ." io COMMAND --help' for the details, options and examples of a command.", $width, 0) ."\n";

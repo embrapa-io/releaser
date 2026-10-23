@@ -18,13 +18,13 @@ else
   B=''; D=''; G=''; Y=''; R=''; N=''
 fi
 
-# Cabeçalho com a logo ("I/O" na fonte "small" do FIGlet), igual ao do menu (class/Menu.php).
+# Cabeçalho, igual ao do menu (class/Menu.php).
 banner() {
   echo ""
-  echo " ${G} ___    __  ___  ${N}  ${B}Embrapa I/O Releaser${N}"
-  echo " ${G}|_ _|  / / / _ \\ ${N}  Version ${IO_RELEASER_VERSION:-dev}"
-  echo " ${G} | |  / / | (_) |${N}  A command line utility to deploy and update apps"
-  echo " ${G}|___|/_/   \\___/ ${N}  ${D}https://embrapa.io/docs/releaser/${N}"
+  echo "${B}Embrapa I/O Releaser${N}"
+  echo "Version ${IO_RELEASER_VERSION:-dev}"
+  echo "A command line utility to deploy and update apps"
+  echo "${D}https://embrapa.io/docs/releaser/${N}"
 }
 
 # Na configuração inicial, o cabeçalho completo (e o run.php não o repete); sem

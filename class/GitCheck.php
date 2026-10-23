@@ -246,8 +246,8 @@ class GitCheck
         return self::result ('ERROR', 'failed: '. $text, [ 'via' => 'HTTPS' ]);
     }
 
-    /** Uma linha para o menu do `io`. */
-    static public function summary ($check)
+    /** Resumo para o menu e para o `io check`: "Error!" em vermelho, "Warning!" em amarelo e "Success!" em verde. */
+    static public function summary ($check, $plain = TRUE)
     {
         $worst = 'OK';
 
@@ -261,11 +261,13 @@ class GitCheck
 
         $parts = [ 'API '. $check ['api']['message'] ];
 
-        if ($check ['token']) $parts [] = 'token '. $check ['token']['message'];
+        if ($check ['token']) $parts [] = 'Token '. $check ['token']['message'];
 
-        $parts [] = ($check ['clone']['via'] ?? 'clone') .' '. $check ['clone']['message'];
+        $parts [] = ($check ['clone']['via'] ?? 'Clone') .': '. $check ['clone']['message'];
 
-        return 'GitLab check: '. $worst .' > '. implode (' | ', $parts) . ($worst == 'OK' ? '' : "\nRun 'io check' for details.");
+        $label = [ 'OK' => [ 'Success!', 'green' ], 'WARNING' => [ 'Warning!', 'yellow' ], 'ERROR' => [ 'Error!', 'red' ] ][$worst];
+
+        return Menu::paint ($label [0], $label [1], $plain) .' '. implode (' | ', $parts) . ($worst == 'OK' ? '' : "\nRun 'io check' for details.");
     }
 
     /** Há o que avisar por e-mail? Indisponibilidade passageira não conta. */

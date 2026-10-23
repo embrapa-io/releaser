@@ -224,7 +224,7 @@ abstract class Orchestrator
                 echo "  ". $name ."\n";
         }
 
-        echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($files) - sizeof ($plan ['ignore'])) ." backup file(s) [D = daily, W = weekly, M = monthly]: \n";
+        echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($files) - sizeof ($plan ['ignore'])) ." backup file(s) [D = daily, W = weekly, M = monthly, Y = yearly]: \n";
 
         foreach ($plan ['keep'] as $name => $tags)
             echo "  ". str_pad ($tags, 4) . str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";

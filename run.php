@@ -148,7 +148,7 @@ $_operations = [
 		'Run the sanitize process (the \'sanitize\' CLI service of each stack). Builds without it are skipped.'
 	),
 	'cleaner' => new Operation (
-		'Rotate backups (7 daily, 4 weekly, 3 monthly)',
+		'Rotate backups (D/W/M/Y, default 7/4/3/1)',
 		'Controller::cleaner',
 		1,
 		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run]',
@@ -159,7 +159,7 @@ $_operations = [
 			'--dry-run'
 		],
 		'maintenance',
-		'Rotate the backup files of builds: keeps the last 7 daily, 4 weekly and 3 monthly. Only files named with the build prefix and a date are considered. With --dry-run, only shows what would be deleted.'
+		'Rotate the backup files of builds: keeps the last 7 daily, 4 weekly, 3 monthly and 1 yearly (the first backup of the year), or what RETENTION sets in the \'.env\' file (\'D/W/M/Y\', e.g., \'14/8/12/3\'). Only files named with the build prefix and a date are considered. With --dry-run, only shows what would be deleted.'
 	),
 	'health' => new Operation (
 		'Report service health to the platform',

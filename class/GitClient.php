@@ -48,7 +48,7 @@ class GitClient
             $file = $clone . DIRECTORY_SEPARATOR . $name;
 
             if (is_dir ($file))
-                throw new Exception ("Impossible to write '". $name ."' file: the repository has a directory with this name. Remove it from the repository");
+                throw new Exception ("Unable to write '". $name ."' file: the repository has a directory with this name. Remove it from the repository");
 
             // O handleError transforma o warning do PHP em exceção; o motivo vai junto.
             try
@@ -57,11 +57,11 @@ class GitClient
             }
             catch (\Throwable $e)
             {
-                throw new Exception ("Impossible to write '". $name ."' file (". $e->getMessage () .")");
+                throw new Exception ("Unable to write '". $name ."' file (". $e->getMessage () .")");
             }
 
             if ($written === FALSE)
-                throw new Exception ("Impossible to write '". $name ."' file");
+                throw new Exception ("Unable to write '". $name ."' file");
         }
     }
 
@@ -117,7 +117,7 @@ class GitClient
 
             echo "\n". implode ("\n", $output) ."\n";
 
-            throw new Exception ('Impossible to clone repository at tag "'. $version .'"');
+            throw new Exception ('Unable to clone the repository at tag "'. $version .'"');
         }
 
         unset ($output);
@@ -162,7 +162,7 @@ class GitClient
         {
             self::delete ($clone);
 
-            throw new Exception ('Impossible to clone repository at branch "'. $stage .'"');
+            throw new Exception ('Unable to clone the repository at branch "'. $stage .'"');
         }
 
         try

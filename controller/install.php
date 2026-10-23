@@ -278,10 +278,10 @@ $definition = [
 ];
 
 if (!file_exists ($dir) && !@mkdir ($dir, 0755, TRUE))
-	throw new Exception ("Impossible to create directory '". $dir ."'");
+	throw new Exception ("Unable to create directory '". $dir ."'");
 
 if (file_put_contents ($file, json_encode ($definition, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ."\n", LOCK_EX) === FALSE)
-	throw new Exception ("Impossible to write '". $file ."'");
+	throw new Exception ("Unable to write '". $file ."'");
 
 echo "\n";
 

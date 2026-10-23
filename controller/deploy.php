@@ -4,7 +4,7 @@ $git = GitLab::singleton ();
 
 $_apps = $_data . DIRECTORY_SEPARATOR .'apps';
 
-echo "INFO > Checking status of ". sizeof ($_builds) ." builds configured... \n";
+echo "INFO > Checking the status of ". sizeof ($_builds) ." configured build(s)... \n";
 
 foreach ($_builds as $_build => $_b)
 {
@@ -76,7 +76,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "ERROR > Impossible to get repository tags! ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to get the repository tags! ". $e->getMessage () ."! \n\n";
 
 		$_nothing = FALSE;
 
@@ -131,16 +131,16 @@ foreach ($_builds as $_build => $_b)
 
 	if ($_daemon) ob_start ();
 
-	echo "INFO > New tag found to build '". $_build ."'! \n";
+	echo "INFO > New tag found for build '". $_build ."'! \n";
 
 	if ($_last)
 		echo "INFO > Updating from ". $_last ." to ". $_newer ['name'];
 	else
-		echo "INFO > Deploying it's first version ". $_newer ['name'];
+		echo "INFO > Deploying its first version ". $_newer ['name'];
 
-	echo ", commited by ". $_newer ['commit']['author_name'] ." <". $_newer ['commit']['author_email'] ."> at ". $_newer ['commit']['created_at'] .". \n";
+	echo ", committed by ". $_newer ['commit']['author_name'] ." <". $_newer ['commit']['author_email'] ."> at ". $_newer ['commit']['created_at'] .". \n";
 
-	echo "INFO > Checking if new tag has been created from branch '". $_b->stage ."'... ";
+	echo "INFO > Checking if the new tag was created from branch '". $_b->stage ."'... ";
 
 	try
 	{
@@ -150,7 +150,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > Impossible to get refs to tag ". $_newer ['name'] ." (commit '". $_newer ['commit']['id'] ."')! ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to get the refs of tag ". $_newer ['name'] ." (commit '". $_newer ['commit']['id'] ."')! ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -172,7 +172,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > New tag ". $_newer ['name'] ." has been not created from branch '". $_b->stage ."'! Please, delete this tag and re-create from correct branch. \n\n";
+		echo "ERROR > New tag ". $_newer ['name'] ." was not created from branch '". $_b->stage ."'! Please delete this tag and re-create it from the correct branch. \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -187,7 +187,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "ERROR > Impossible to get milestones! ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to get milestones! ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -208,7 +208,7 @@ foreach ($_builds as $_build => $_b)
 	}
 
 	if (!$checkMilestone)
-		echo "WARNING > No related milestone found! Has good practice, a milestone named '". $milestone ."' is required to manage issues releated to this release. \n";
+		echo "WARNING > No related milestone found! As a good practice, a milestone named '". $milestone ."' is required to manage the issues related to this release. \n";
 
 	try
 	{
@@ -222,14 +222,14 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > Impossibe to get repository settings ('.embrapa/settings.json'). ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to get the repository settings ('.embrapa/settings.json'). ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
 		continue;
 	}
 
-	echo "INFO > New version will be deployed using orchestrator '". self::singleton ()->orchestrator ."' at server '". getenv ('SERVER') ."'! \n";
+	echo "INFO > The new version will be deployed using orchestrator '". self::singleton ()->orchestrator ."' on server '". getenv ('SERVER') ."'! \n";
 
 	$replace = [
 		'%SERVER%' => getenv ('SERVER'),
@@ -254,7 +254,7 @@ foreach ($_builds as $_build => $_b)
 		$ci .= $line;
 	}
 
-	echo "INFO > CI/DI environment variables: \n\n". $ci ."\n";
+	echo "INFO > CI/CD environment variables: \n\n". $ci ."\n";
 
 	$env = '';
 
@@ -263,7 +263,7 @@ foreach ($_builds as $_build => $_b)
 
 	if (strpos ($env, ' ') !== false)
 	{
-		echo "ERROR > Environment variables can not contain spaces! Check attribute 'env' at file 'builds.json'. \n\n";
+		echo "ERROR > Environment variables cannot contain spaces! Check the 'env' attribute in the build file. \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -279,7 +279,7 @@ foreach ($_builds as $_build => $_b)
 
 	echo "\n";
 
-	echo "INFO > Trying to clone app... ";
+	echo "INFO > Trying to clone the app... ";
 
 	unset ($clone);
 
@@ -293,7 +293,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > Impossible to prepare the app from the repository. ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to prepare the app from the repository. ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -306,7 +306,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "ERROR > Impossibe to deploy tag ". $_newer ['name'] .". ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to deploy tag ". $_newer ['name'] .". ". $e->getMessage () ."! \n\n";
 
 		if ($_daemon) Mail::singleton ()->send ($_build .' - RELEASE ERROR', mailBody (), $_b->team);
 
@@ -330,7 +330,7 @@ foreach ($_builds as $_build => $_b)
 		Report::send ([ [ 'project' => $_b->project, 'app' => $_b->app, 'stage' => $_b->stage, 'version' => $_newer ['name'] ] ]);
 	}
 
-	echo "SUCCESS > All done! Version '". $_newer ['name'] ."' in '". $_b->stage ."' stage of application '". $_b->project ."/". $_b->app ."' is DEPLOYED! \n";
+	echo "SUCCESS > All done! Version '". $_newer ['name'] ."' of build '". $_build ."' is DEPLOYED! \n";
 
 	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS', mailBody (), $_b->team);
 }

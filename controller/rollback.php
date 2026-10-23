@@ -34,10 +34,10 @@ try
 	}
 
 	if (is_null ($_last) || $_last == '')
-		throw new Exception ("No version deployed! Use command 'deploy' instead!");
+		throw new Exception ("No version deployed! Use the 'deploy' command instead!");
 
 	if ($_last == $_version)
-		throw new Exception ('Version "'. $_version .'" already deployed!');
+		throw new Exception ('Version "'. $_version .'" is already deployed!');
 
 	$rollback = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app]) . DIRECTORY_SEPARATOR .'.rollback'. DIRECTORY_SEPARATOR . $_b->stage;
 
@@ -55,11 +55,11 @@ try
 	}
 
 	if ($_rollback == $_version)
-		throw new Exception ('Version "'. $_version .'" already rollbacked!');
+		throw new Exception ('Version "'. $_version .'" is already the rolled-back version!');
 
 	$_apps = $_data . DIRECTORY_SEPARATOR .'apps';
 
-	echo "INFO > Trying to rollback ". $_build ." from version ". $_last ." to ". $_version ."... \n";
+	echo "INFO > Trying to roll back ". $_build ." from version ". $_last ." to ". $_version ."... \n";
 
 	echo "INFO > Checking tags... \n";
 
@@ -97,7 +97,7 @@ try
 	}
 	catch (Exception $e)
 	{
-		throw new Exception ("Impossible to get repository tags! ". $e->getMessage () ."!");
+		throw new Exception ("Unable to get the repository tags! ". $e->getMessage () ."!");
 	}
 
 	$match = FALSE;
@@ -114,11 +114,11 @@ try
 	}
 
 	if (!$match)
-		throw new Exception ('Version '. $_version .' not found has a tag in branch '. $_b->stage .'!');
+		throw new Exception ('Version '. $_version .' not found as a tag in branch '. $_b->stage .'!');
 
-	echo "INFO > Deploying version ". $_version .", commited by ". $tag ['commit']['author_name'] ." <". $tag ['commit']['author_email'] ."> at ". $tag ['commit']['created_at'] .". \n";
+	echo "INFO > Deploying version ". $_version .", committed by ". $tag ['commit']['author_name'] ." <". $tag ['commit']['author_email'] ."> at ". $tag ['commit']['created_at'] .". \n";
 
-	echo "INFO > Checking if version has been created from branch '". $_b->stage ."'... \n";
+	echo "INFO > Checking if the version was created from branch '". $_b->stage ."'... \n";
 
 	try
 	{
@@ -126,7 +126,7 @@ try
 	}
 	catch (Exception $e)
 	{
-		throw new Exception ("Impossible to get refs to tag ". $tag ['name'] ." (commit '". $tag ['commit']['id'] ."')! ". $e->getMessage () ."!");
+		throw new Exception ("Unable to get the refs of tag ". $tag ['name'] ." (commit '". $tag ['commit']['id'] ."')! ". $e->getMessage () ."!");
 	}
 
 	$checkBranch = FALSE;
@@ -141,7 +141,7 @@ try
 	}
 
 	if (!$checkBranch)
-		throw new Exception ("Tag ". $tag ['name'] ." has been not created from branch '". $_b->stage ."'!");
+		throw new Exception ("Tag ". $tag ['name'] ." was not created from branch '". $_b->stage ."'!");
 
 	try
 	{
@@ -149,7 +149,7 @@ try
 	}
 	catch (Exception $e)
 	{
-		throw new Exception ("Impossible to get milestones! ". $e->getMessage () ."!");
+		throw new Exception ("Unable to get milestones! ". $e->getMessage () ."!");
 	}
 
 	$milestone = explode ('-', $tag ['name'])[0];
@@ -166,7 +166,7 @@ try
 	}
 
 	if (!$checkMilestone)
-		echo "WARNING > No related milestone found! Has good practice, a milestone named '". $milestone ."' is required to manage issues releated to this release. \n";
+		echo "WARNING > No related milestone found! As a good practice, a milestone named '". $milestone ."' is required to manage the issues related to this release. \n";
 
 	try
 	{
@@ -180,10 +180,10 @@ try
 	{
 		echo "error! \n";
 
-		throw new Exception ("Impossibe to get repository settings ('.embrapa/settings.json'). ". $e->getMessage () ."!");
+		throw new Exception ("Unable to get the repository settings ('.embrapa/settings.json'). ". $e->getMessage () ."!");
 	}
 
-	echo "INFO > Rollbacked version will be deployed using orchestrator '". self::singleton ()->orchestrator ."' at server '". getenv ('SERVER') ."'! \n";
+	echo "INFO > The rolled-back version will be deployed using orchestrator '". self::singleton ()->orchestrator ."' on server '". getenv ('SERVER') ."'! \n";
 
 	$replace = [
 		'%SERVER%' => getenv ('SERVER'),
@@ -208,7 +208,7 @@ try
 		$ci .= $line;
 	}
 
-	echo "INFO > CI/DI environment variables: \n\n". $ci ."\n";
+	echo "INFO > CI/CD environment variables: \n\n". $ci ."\n";
 
 	$env = '';
 
@@ -216,9 +216,9 @@ try
 		$env .= $variable .'='. $value ."\n";
 
 	if (strpos ($env, ' ') !== false)
-		throw new Exception ("Environment variables can not contain spaces! Check attribute 'env' at file 'builds.json'.");
+		throw new Exception ("Environment variables cannot contain spaces! Check the 'env' attribute in the build file.");
 
-	echo "INFO > Trying to clone app... ";
+	echo "INFO > Trying to clone the app... ";
 
 	unset ($clone);
 
@@ -232,7 +232,7 @@ try
 	{
 		echo "error! \n";
 
-		throw new Exception ("Impossible to prepare the app from the repository. ". $e->getMessage () ."!");
+		throw new Exception ("Unable to prepare the app from the repository. ". $e->getMessage () ."!");
 	}
 
 	try
@@ -241,12 +241,12 @@ try
 	}
 	catch (Exception $e)
 	{
-		throw new Exception ("Impossibe to deploy tag ". $tag ['name'] .". ". $e->getMessage () ."!");
+		throw new Exception ("Unable to deploy tag ". $tag ['name'] .". ". $e->getMessage () ."!");
 	}
 
 	file_put_contents ($rollback, $tag ['name'], LOCK_EX);
 
-	echo "SUCCESS > All done! Version '". $tag ['name'] ."' in '". $_b->stage ."' stage of application '". $_b->project ."/". $_b->app ."' is DEPLOYED! \n";
+	echo "SUCCESS > All done! Version '". $tag ['name'] ."' of build '". $_build ."' is DEPLOYED! \n";
 }
 catch (Exception $e)
 {

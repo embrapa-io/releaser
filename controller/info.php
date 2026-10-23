@@ -45,7 +45,7 @@ foreach ($_builds as $_build => $_b)
 
 	if (!is_string ($_last) || $_last == '' || !self::score ($_b->stage, $_last))
 	{
-		echo "ERROR > No one valid version was deployed to build: ". $_build ."! \n";
+		echo "ERROR > No valid version has been deployed to build ". $_build ."! \n";
 
 		continue;
 	}
@@ -80,15 +80,15 @@ foreach ($_builds as $_build => $_b)
 
 	if (!file_exists ($_data . DIRECTORY_SEPARATOR . $clone) || !is_dir ($_data . DIRECTORY_SEPARATOR . $clone))
 	{
-		echo "ERROR > The clone to version/tag '". $_version ."' of build '". $_build ."' is missing! \n";
+		echo "ERROR > The clone of version/tag '". $_version ."' of build '". $_build ."' is missing! \n";
 
 		continue;
 	}
 
-	echo "To ". $_build ." (version ". $_version ."): \n";
+	echo "For ". $_build ." (version ". $_version ."): \n";
 	echo "cd ". $clone ." \n";
 
-	if ($isRollbacked) echo "Important! This version has rollbacked from version ". $_last .". \n";
+	if ($isRollbacked) echo "Important! This version was rolled back from version ". $_last .". \n";
 }
 
 $disabled = self::disabledBuilds ($_data);
@@ -104,6 +104,6 @@ if (sizeof ($disabled))
 
 echo "\n";
 
-echo "Once in directory, you can apply commands related to orchestrator ". self::singleton ()->orchestrator .": \n";
+echo "Once in the directory, you can run the commands of orchestrator ". self::singleton ()->orchestrator .": \n";
 
 echo (self::singleton ()->orchestrator)::reference ();

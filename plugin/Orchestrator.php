@@ -15,6 +15,9 @@ abstract class Orchestrator
     // Imagem mínima usada para listar/apagar arquivos dentro do volume de backup.
     const CLEANER_IMAGE = 'alpine:3';
 
+    // Tempo máximo do pull e do build do `restart --upgrade` (o mesmo do deployer da plataforma).
+    const UPGRADE_TIMEOUT = 1200;
+
     const CLI_SERVICES = [
         'backup',
         'restore',
@@ -38,11 +41,55 @@ abstract class Orchestrator
     abstract public static function validate ($path, $namespace);
     abstract public static function deploy ($path, $namespace);
     abstract public static function stop ($path, $namespace, $down = FALSE);
-    abstract public static function restart ($path, $namespace);
+    abstract public static function restart ($path, $namespace, $upgrade = FALSE);
     abstract public static function backup ($path, $namespace);
     abstract public static function sanitize ($path, $namespace);
     abstract public static function cleaner ($path, $namespace, $policy, $dryRun = FALSE);
     abstract public static function reference ();
+
+    /**
+     * Renova as imagens da build, como o deployer da plataforma no `restart` com
+     * `upgrade`: baixa as imagens de registro (as *floating*, como `latest` ou
+     * `8.3-apache`, mudam de conteúdo sem mudar de nome) e reconstrói os serviços
+     * `build:` com `--pull`, que renova a imagem base do Dockerfile. Só os serviços
+     * do `.env.io` (sem os CLI_SERVICES, que ficam no perfil `cli`). Falha de pull
+     * de um serviço não aborta (`--ignore-pull-failures`); falha de build, sim.
+     */
+    protected static function upgradeImages ()
+    {
+        $timeout = 'timeout '. self::UPGRADE_TIMEOUT;
+
+        echo "INFO > Pulling the images of the services (floating tags get the latest content)... \n";
+
+        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' pull --ignore-pull-failures --ignore-buildable'."\n";
+
+        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' pull --ignore-pull-failures --ignore-buildable 2>&1', $output, $return);
+
+        if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+        if ($return !== 0)
+            throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when pulling images with Docker Compose' : 'Error when pulling images with Docker Compose');
+
+        unset ($return);
+        unset ($output);
+
+        echo "INFO > Rebuilding the services with 'build:' over a renewed base image... \n";
+
+        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull'."\n";
+
+        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull 2>&1', $output, $return);
+
+        if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+        if ($return !== 0)
+            throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when building images with Docker Compose' : 'Error when building images with Docker Compose');
+    }
+
+    // Código de saída do `timeout` (GNU: 124; BusyBox: 143, por SIGTERM).
+    private static function timedOut ($return)
+    {
+        return in_array ((int) $return, [ 124, 143 ]);
+    }
 
     /**
      * Containers da build neste host, pelo rótulo da stack (Compose: projeto;
@@ -60,7 +107,7 @@ abstract class Orchestrator
         exec ($cmd .' 2>&1', $output, $return);
 
         if ($return !== 0)
-            throw new Exception ("Error on Docker command: ". implode (' ', $output));
+            throw new Exception ("Error in Docker command: ". implode (' ', $output));
 
         $services = [];
 
@@ -152,7 +199,7 @@ abstract class Orchestrator
 
         if (!sizeof ($files))
         {
-            echo "WARNING > No backup files of this build found in volume! \n";
+            echo "WARNING > No backup files of this build found in the volume! \n";
 
             return [ 'keep' => [], 'delete' => [], 'ignore' => [], 'stats' => $stats + [ 'files_after' => 0, 'bytes_after' => 0, 'bytes_deleted' => 0 ] ];
         }
@@ -305,7 +352,7 @@ abstract class Orchestrator
         {
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ("Impossible to list files of volume '". $volume ."'");
+            throw new Exception ("Unable to list the files of volume '". $volume ."'");
         }
 
         $files = [];
@@ -337,7 +384,7 @@ abstract class Orchestrator
         {
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ("Impossible to delete files of volume '". $volume ."'");
+            throw new Exception ("Unable to delete the files of volume '". $volume ."'");
         }
     }
 
@@ -353,7 +400,7 @@ abstract class Orchestrator
 
             echo implode ("\n", $output) ."\n";
 
-            throw new Exception ('Impossible to connect in host "'. $host .'"');
+            throw new Exception ('Unable to connect to host "'. $host .'"');
         }
 
         echo "ok! \n";

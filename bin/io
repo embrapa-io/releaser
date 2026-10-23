@@ -5,20 +5,45 @@
 # ("Bad owner or permissions"), derrubando o clone de todo deploy.
 umask 022
 
-echo ""
+# Cores ANSI discretas só em terminal (e sem NO_COLOR): saída redirecionada ou
+# capturada por script fica em texto puro. A largura do terminal vai para o
+# run.php em COLUMNS (o menu quebra as descrições por ela).
+if [ -t 1 ] && [ -z "$NO_COLOR" ] && [ "$TERM" != "dumb" ]; then
+  B=$'\e[1m'; D=$'\e[2m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; N=$'\e[0m'
 
-echo "A command line utility to help deploy and update Embrapa I/O apps."
-echo "For detailed info, access: https://embrapa.io/docs/releaser/"
+  cols=$(tput cols 2> /dev/null || stty size 2> /dev/null | cut -d' ' -f2)
 
-if [ -n "$IO_RELEASER_VERSION" ]; then
-    echo "Version $IO_RELEASER_VERSION"
+  [[ $cols =~ ^[0-9]+$ ]] && export COLUMNS=$cols
+else
+  B=''; D=''; G=''; Y=''; R=''; N=''
+fi
+
+# Cabeçalho com a logo ("I/O" na fonte "small" do FIGlet), igual ao do menu (class/Menu.php).
+banner() {
+  echo ""
+  echo " ${G} ___    __  ___  ${N}  ${B}Embrapa I/O Releaser${N}"
+  echo " ${G}|_ _|  / / / _ \\ ${N}  Version ${IO_RELEASER_VERSION:-dev}"
+  echo " ${G} | |  / / | (_) |${N}  A command line utility to deploy and update apps"
+  echo " ${G}|___|/_/   \\___/ ${N}  ${D}https://embrapa.io/docs/releaser/${N}"
+}
+
+# Na configuração inicial, o cabeçalho completo (e o run.php não o repete); sem
+# comando, o run.php imprime o menu com o cabeçalho; com comando, só uma linha.
+if [ ! -d "/data" ] || [ ! -f "/data/.env" ]; then
+  banner
+
+  export IO_BANNER=shown
+elif [ $# -gt 0 ]; then
+  echo ""
+  echo "${D}Embrapa I/O Releaser ${IO_RELEASER_VERSION:-dev} · https://embrapa.io/docs/releaser/${N}"
 fi
 
 if [ ! -d "/data" ]; then
   echo ""
 
-  echo "Critical! You need to mount volume data! Correct command to use this image is:"
-  echo "docker run --name releaser -v $$(pwd):/data -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped -d embrapa/releaser"
+  echo "${R}Critical!${N} You need to mount the data volume! The correct command to use this image is:"
+  echo ""
+  echo "docker run --name releaser -v \$(pwd):/data -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped -d embrapa/releaser"
 
   exit 1
 fi
@@ -27,23 +52,29 @@ if [ ! -f "/data/.env" ]; then
   while
     echo ""
 
-    echo "Warning! Environment variables file (.env) not found!"
-    echo "Please, enter with required info..."
+    echo "${Y}Warning!${N} Environment variables file (.env) not found!"
+    echo "Please enter the required information..."
 
     echo ""
 
     while
-      read -p "Server name (e.g., foo.example.com): " server
+      read -p "${B}Server name${N} (e.g., foo.example.com): " server
       [[ -z $server || $server =~ [^a-z0-9-\.] ]]
     do true; done
 
     echo ""
 
-    while
-      PS3="Container orchestrator: "
+    echo "${B}Container orchestrator${N}"
 
-      select orchestrator in DockerCompose DockerSwarm
+    orchestrators=(DockerCompose DockerSwarm)
+    labels=("DockerCompose  (one server, Docker Compose)" "DockerSwarm    (Docker Swarm cluster)")
+
+    while
+      PS3="Choose 1 or 2: "
+
+      select label in "${labels[@]}"
       do
+        orchestrator=${orchestrators[$((REPLY - 1))]:-}
         break
       done
       [[ -z $orchestrator || $orchestrator != @(DockerCompose|DockerSwarm) ]]
@@ -51,26 +82,27 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
-    echo "Go to https://git.embrapa.io and, in your profile, generate a new Access Token with 'read_api' scope."
+    echo "Go to https://git.embrapa.io and, in your profile, generate a new"
+    echo "Access Token with the 'read_api' scope."
 
     while
-      read -p "GitLab token: " token
+      read -p "${B}GitLab token${N}: " token
       [[ -z $token || ${#token} < 10 ]]
     do true; done
 
     echo ""
 
     while
-      read -p "SMTP host (e.g., smtp.gmail.com): " smtp_host
+      read -p "${B}SMTP host${N} (e.g., smtp.gmail.com): " smtp_host
       [[ -z $smtp_host || $smtp_host =~ [^a-z0-9-\.] ]]
     do true; done
 
     while
-      read -p "SMTP port (e.g., 587): " smtp_port
+      read -p "${B}SMTP port${N} (e.g., 587): " smtp_port
       [[ -z $smtp_port || $smtp_port == *[^0-9]* ]]
     do true; done
 
-    read -p "SMTP secure (y/N): " smtp_secure
+    read -p "${B}SMTP secure${N} (y/N): " smtp_secure
 
     if [ "$smtp_secure" != "${smtp_secure#[Yy]}" ]; then
       smtp_secure="yes"
@@ -79,17 +111,17 @@ if [ ! -f "/data/.env" ]; then
     fi
 
     while
-      read -p "SMTP from (e.g., no-reply@embrapa.br): " smtp_from
+      read -p "${B}SMTP from${N} (e.g., no-reply@embrapa.br): " smtp_from
       [[ -z $smtp_from || $smtp_from =~ [^a-zA-Z0-9,-@\.] ]]
     do true; done
 
-    read -p "SMTP user (e.g., you@gmail.com): " smtp_user
-    read -p "SMTP password: " smtp_pass
+    read -p "${B}SMTP user${N} (e.g., you@gmail.com): " smtp_user
+    read -p "${B}SMTP password${N}: " smtp_pass
 
     echo ""
 
     while
-      read -p "e-Mail to log: " email
+      read -p "${B}Log e-mail${N}: " email
       [[ -z $email || $email =~ [^a-zA-Z0-9,-@\.] ]]
     do true; done
 
@@ -114,7 +146,7 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
-    read -p "Is correct? (y/N): " confirm
+    read -p "${B}Is this correct?${N} (y/N): " confirm
 
     [[ -z $confirm || "$confirm" == "${confirm#[Yy]}" ]]
   do true; done
@@ -123,7 +155,7 @@ if [ ! -f "/data/.env" ]; then
 
   echo ""
 
-  echo "Note: A '.env' file has been created in volume directory shared with the container. To change values in the future, edit this file."
+  echo "Note: a '.env' file has been created in the volume directory shared with the container. To change values in the future, edit this file."
 fi
 
 export $(cat /data/.env)
@@ -131,12 +163,12 @@ export $(cat /data/.env)
 if [ ! -f "/root/.ssh/id_rsa" ]; then
   echo ""
 
-  echo "Warning! Looks like the SSH Key to GitLab access is missing."
+  echo "${Y}Warning!${N} It looks like the SSH key for GitLab access is missing."
 
   echo ""
 
   if [ ! -f "/data/ssh" ]; then
-    echo "Generating new SSH key pair..."
+    echo "Generating a new SSH key pair..."
 
     ssh-keygen -o -t rsa -b 4096 -N '' -C '' -f /data/ssh
   else
@@ -144,14 +176,14 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
   fi
 
   if [ ! -f "/data/ssh.pub" ]; then
-    echo "Generating a new SSH public key from private key..."
+    echo "Generating a new SSH public key from the private key..."
 
     ssh-keygen -y -f /data/ssh > /data/ssh.pub
   fi
 
   echo ""
 
-  echo "Configuring SSH private key in container environment..."
+  echo "Configuring the SSH private key in the container environment..."
 
   mkdir -p /root/.ssh
   cp /data/ssh /root/.ssh/id_rsa
@@ -161,7 +193,8 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
 
   echo ""
 
-  echo "Done! Please, access GitLab (https://git.embrapa.io) and, in your profile, add a new SSH with follow content:"
+  echo "${G}Done!${N} Please access GitLab (https://git.embrapa.io) and, in your profile,"
+  echo "add a new SSH key with the following content:"
 
   echo ""
 
@@ -169,7 +202,7 @@ if [ ! -f "/root/.ssh/id_rsa" ]; then
 
   echo ""
 
-  echo "Note: SSH key pair is available on the volume directory shared with the container."
+  echo "Note: the SSH key pair is available in the volume directory shared with the container."
 fi
 
 # Autocorreção a cada execução: containers criados com umask 0000 por versões
@@ -180,17 +213,17 @@ chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
   echo ""
 
-  echo "Warning! The builds are not configured yet (directory 'builds/' is missing)."
+  echo "${Y}Warning!${N} The builds are not configured yet (directory 'builds/' is missing)."
 
   echo ""
 
-  echo "Please enter some builds comma separated, e.g.:"
+  echo "Please enter one or more builds, separated by commas, e.g.:"
   echo "project-a/app1@beta,project-b/web@release,project-a/app2@alpha"
 
   echo ""
 
   while
-    read -p "Builds: " input
+    read -p "${B}Builds${N}: " input
     [[ -z $input || $input =~ [^a-z0-9,-/@\ ] ]]
   do true; done
 
@@ -249,14 +282,18 @@ if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
   done
 
   if (( count == 0 )); then
-    echo "Warning! No one build could be configured. Try again or run 'io install' for a guided setup."
+    echo "${Y}Warning!${N} No build could be configured. Try again or run 'io install' for a guided setup."
 
     exit 1
   fi
 
-  echo "Done! $count build file(s) created in 'builds/' inside the volume directory shared with the container."
-  echo "Now, complete each file with the e-mails of your team members, the Sentry DSN, the Matomo ID/token and the environment variables ('env')."
-  echo "Tip: 'io install' does all of that for you, guided, fetching from the platform what only the platform knows."
+  echo "${G}Done!${N} $count build file(s) created in 'builds/' inside the volume directory"
+  echo "shared with the container. Now, complete each file with the e-mails of your"
+  echo "team members, the Sentry DSN, the Matomo ID/token and the environment"
+  echo "variables ('env')."
+  echo ""
+  echo "${D}Tip: 'io install' does all of that for you, guided, fetching from the platform"
+  echo "what only the platform knows.${N}"
 fi
 
 echo ""

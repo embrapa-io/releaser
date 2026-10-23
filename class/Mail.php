@@ -154,7 +154,7 @@ class Mail
         }
         catch (\Throwable $e)
         {
-            echo "WARNING > Impossible to send e-mail '". $subject ."': ". $e->getMessage () ." \n";
+            echo "WARNING > Unable to send e-mail '". $subject ."': ". $e->getMessage () ." \n";
 
             self::reportDaily ($e);
         }
@@ -222,7 +222,7 @@ class Mail
                     continue;
                 }
 
-                $mail ['text'] = "NOTE > This message was generated at ". date ('Y-m-d H:i:s T', $mail ['created']) ." and could only be sent now, because the SMTP server was unavailable. \n\n". $mail ['text'];
+                $mail ['text'] = "NOTE > This message was generated at ". date ('Y-m-d H:i:s T', $mail ['created']) ." and could only be sent now because the SMTP server was unavailable. \n\n". $mail ['text'];
 
                 if (!$this->deliver ($mail))
                 {
@@ -240,7 +240,7 @@ class Mail
         }
         catch (\Throwable $e)
         {
-            echo "WARNING > Impossible to send queued e-mails: ". $e->getMessage () ." \n";
+            echo "WARNING > Unable to send queued e-mails: ". $e->getMessage () ." \n";
         }
     }
 
@@ -263,14 +263,14 @@ class Mail
 
         if (!sizeof ($to))
         {
-            echo "WARNING > E-mail '". $mail ['subject'] ."' not sent: no valid recipients (check 'LOG_MAIL' at '.env' file)! \n";
+            echo "WARNING > E-mail '". $mail ['subject'] ."' not sent: no valid recipients (check 'LOG_MAIL' in the '.env' file)! \n";
 
             return TRUE; // não há o que reenviar
         }
 
         if (!$this->from)
         {
-            echo "WARNING > E-mail '". $mail ['subject'] ."' not sent: no valid sender (check 'SMTP_FROM' at '.env' file)! \n";
+            echo "WARNING > E-mail '". $mail ['subject'] ."' not sent: no valid sender (check 'SMTP_FROM' in the '.env' file)! \n";
 
             return TRUE;
         }
@@ -330,9 +330,9 @@ class Mail
 
         $this->down = TRUE;
 
-        if (!sizeof ($errors)) $errors [] = "no SMTP host configured (check 'SMTP_HOST' at '.env' file)";
+        if (!sizeof ($errors)) $errors [] = "no SMTP host configured (check 'SMTP_HOST' in the '.env' file)";
 
-        echo "WARNING > Impossible to send e-mail '". $mail ['subject'] ."'! SMTP attempts: \n";
+        echo "WARNING > Unable to send e-mail '". $mail ['subject'] ."'! SMTP attempts: \n";
 
         foreach ($errors as $error)
             echo "  - ". $error ." \n";
@@ -355,13 +355,13 @@ class Mail
 
             file_put_contents ($file, json_encode ($mail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
 
-            echo "WARNING > E-mail '". $mail ['subject'] ."' queued to be sent in the next executions! \n";
+            echo "WARNING > E-mail '". $mail ['subject'] ."' queued to be sent in the next runs! \n";
 
             $this->prune ();
         }
         catch (\Throwable $e)
         {
-            echo "WARNING > Impossible to queue e-mail '". $mail ['subject'] ."': ". $e->getMessage () ." \n";
+            echo "WARNING > Unable to queue e-mail '". $mail ['subject'] ."': ". $e->getMessage () ." \n";
         }
     }
 

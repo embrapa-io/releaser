@@ -38,7 +38,7 @@ class Trivy
             {
                 if (sizeof ($output)) echo implode ("\n", array_slice ($output, -5)) ."\n";
 
-                throw new Exception ("Impossible to update the Trivy database (". $flag .")");
+                throw new Exception ("Unable to update the Trivy database (". $flag .")");
             }
 
             unset ($output);

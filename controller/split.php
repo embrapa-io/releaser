@@ -24,7 +24,7 @@ if (!is_array ($loaded))
 $dir = $_data . DIRECTORY_SEPARATOR .'builds';
 
 if (!file_exists ($dir) && !@mkdir ($dir, 0755, TRUE))
-	throw new Exception ("Impossible to create directory '". $dir ."'");
+	throw new Exception ("Unable to create directory '". $dir ."'");
 
 $written = 0;
 $skipped = [];
@@ -52,7 +52,7 @@ foreach ($loaded as $i => $b)
 	}
 
 	if (file_put_contents ($file, json_encode ($b, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ."\n", LOCK_EX) === FALSE)
-		throw new Exception ("Impossible to write '". $file ."'");
+		throw new Exception ("Unable to write '". $file ."'");
 
 	echo "INFO > ". $b->project .'/'. $b->app .'@'. $b->stage ." -> builds/". basename ($file) ." \n";
 
@@ -60,7 +60,7 @@ foreach ($loaded as $i => $b)
 }
 
 if (!rename ($legacy, $legacy .'.bkp'))
-	throw new Exception ("Impossible to rename '". $legacy ."' to '". basename ($legacy) .".bkp'");
+	throw new Exception ("Unable to rename '". $legacy ."' to '". basename ($legacy) .".bkp'");
 
 echo "\n";
 

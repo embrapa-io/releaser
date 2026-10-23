@@ -2,7 +2,7 @@
 
 $git = GitLab::singleton ();
 
-echo "INFO > Checking status of all ". sizeof ($_builds) ." builds configured... \n";
+echo "INFO > Checking the status of all ". sizeof ($_builds) ." configured build(s)... \n";
 
 foreach ($_builds as $_build => $_b)
 {
@@ -83,7 +83,7 @@ foreach ($_builds as $_build => $_b)
 		$ci .= $line;
 	}
 
-	echo "INFO > CI/DI environment variables: \n\n". $ci ."\n";
+	echo "INFO > CI/CD environment variables: \n\n". $ci ."\n";
 
 	$env = '';
 
@@ -92,12 +92,12 @@ foreach ($_builds as $_build => $_b)
 
 	if (strpos ($env, ' ') !== false)
 	{
-		echo "ERROR > Environment variables can not contain spaces! Check attribute 'env' at file 'builds.json'. \n\n";
+		echo "ERROR > Environment variables cannot contain spaces! Check the 'env' attribute in the build file. \n\n";
 
 		continue;
 	}
 
-	echo "INFO > Trying to clone app... ";
+	echo "INFO > Trying to clone the app... ";
 
 	unset ($clone);
 
@@ -111,7 +111,7 @@ foreach ($_builds as $_build => $_b)
 	{
 		echo "error! \n";
 
-		echo "ERROR > Impossible to prepare the app from the repository. ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to prepare the app from the repository. ". $e->getMessage () ."! \n\n";
 
 		continue;
 	}
@@ -122,7 +122,7 @@ foreach ($_builds as $_build => $_b)
 	}
 	catch (Exception $e)
 	{
-		echo "ERROR > Impossibe to validate repository. ". $e->getMessage () ."! \n\n";
+		echo "ERROR > Unable to validate the repository. ". $e->getMessage () ."! \n\n";
 
 		continue;
 	}
@@ -135,7 +135,7 @@ foreach ($_builds as $_build => $_b)
 	{}
 
 	if ($isValid)
-		echo "SUCCESS > All done and build '". $_b->stage ."' to application '". $_b->project ."/". $_b->app ."' is VALID! \n";
+		echo "SUCCESS > All done! Build '". $_build ."' is VALID! \n";
 	else
-		echo "WARNING > All done, but build '". $_b->stage ."' to application '". $_b->project ."/". $_b->app ."' is INVALID! \n";
+		echo "WARNING > All done, but build '". $_build ."' is INVALID! \n";
 }

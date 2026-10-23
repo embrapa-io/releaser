@@ -52,6 +52,20 @@ A chave precisa de permissão para **listar, ler, gravar e apagar objetos** no _
 
 Depois de configurar, teste com `io check` (ver "Testando o acesso ao GitLab e ao _bucket_").
 
+#### Pelo assistente (`io` na primeira execução ou `io cloud --setup`)
+
+Não é preciso editar o `.env` à mão. Na **primeira execução** do Releaser, o assistente que cria o `.env` pergunta, depois do SMTP, a retenção local (`Backup retention on this server (daily/weekly/monthly/yearly) [7/4/3/1]`) e se os _backups_ devem ser copiados para um _bucket_ S3 (`Do you want to copy the backups to an S3 bucket in the cloud, owned by you? (y/N)`). Respondendo sim, pede o _endpoint_, o _bucket_, a chave, o segredo (sem eco), a região (padrão `auto`, ou a região lida do _endpoint_ da AWS e do B2) e a retenção no _bucket_ (padrão: a local), **testa o acesso** (`rclone lsd`, 5 segundos) e mostra `OK` ou o motivo da falha, deixando corrigir ou seguir assim mesmo. Só as variáveis respondidas vão para o `.env` (nenhuma `S3_*` fica vazia quando a resposta é não), e a tela de confirmação mostra os segredos mascarados.
+
+Numa **instalação existente**, o mesmo bloco de perguntas roda com:
+
+```bash
+docker exec -it releaser io cloud --setup
+```
+
+Ele acrescenta ou atualiza `RETENTION` e as `S3_*` no `.env`, preservando as outras linhas e a permissão do arquivo (Enter mantém o valor atual; respondendo não com um _bucket_ já configurado, pergunta se remove as `S3_*`). O _daemon_ lê o `.env` na próxima execução.
+
+Em terminal, cada pergunta do assistente é reescrita com a resposta efetiva (`Yes`/`No`, o valor ou o padrão, segredos mascarados); com respostas pela entrada padrão ou saída redirecionada, sai uma linha simples, sem códigos de escape (e `NO_COLOR=1` desliga as cores).
+
 #### Ligando a cópia por _build_ (`auto.cloud`)
 
 No arquivo da _build_ (`builds/<projeto>_<app>_<estágio>.json`):

@@ -88,7 +88,10 @@ class Trivy
                     'installed' => (string) ($v->InstalledVersion ?? ''),
                     'fixed' => (string) ($v->FixedVersion ?? ''),
                     'severity' => $severity,
-                    'title' => (string) ($v->Title ?? '')
+                    'title' => (string) ($v->Title ?? ''),
+                    'class' => (string) ($result->Class ?? ''),
+                    'type' => (string) ($result->Type ?? ''),
+                    'target' => (string) ($result->Target ?? '')
                 ];
             }
         }

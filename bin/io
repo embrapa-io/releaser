@@ -246,6 +246,7 @@ if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
     --argjson backup true \
     --argjson sanitize true \
     --argjson cleaner false \
+    --argjson cloud false \
     '$ARGS.named')
 
   # O que a build reporta ao core (versão, saúde e CVEs): tudo ligado por padrão.

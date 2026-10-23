@@ -1,6 +1,6 @@
 <?php
 
-$check = GitCheck::run ($_data);
+$check = GitCheck::run ($_data, TRUE);
 
 $prefix = [ 'OK' => 'SUCCESS', 'WARNING' => 'WARNING', 'ERROR' => 'ERROR' ];
 
@@ -38,10 +38,21 @@ echo $prefix [$check ['clone']['status']] ." > ". $check ['clone']['via'] .": ".
 
 echo "\n";
 
+// Cópia em nuvem: só quando alguma variável S3_* está no .env (ver class/Cloud.php).
+if ($check ['cloud'])
+{
+	echo "INFO > S3 bucket '". (Cloud::value ('S3_BUCKET') !== '' ? Cloud::value ('S3_BUCKET') : '?') ."' at ". (Cloud::value ('S3_ENDPOINT') !== '' ? Cloud::value ('S3_ENDPOINT') : '?') ." (S3_ENDPOINT)... \n";
+
+	echo $prefix [$check ['cloud']['status']] ." > S3: ". $check ['cloud']['message'] ." \n";
+
+	echo "\n";
+}
+
 echo GitCheck::summary ($check, Menu::plain ($_daemon)) ."\n";
 
 // No daemon (diário), e-mail só quando há o que fazer: token vencido, revogado,
-// sem escopo ou perto de vencer, ou clone recusado. GitLab fora do ar por um
-// momento não vira e-mail (o deploy do próximo ciclo já avisa se persistir).
+// sem escopo ou perto de vencer, clone recusado ou bucket S3 inacessível (no
+// máximo um e-mail por dia). GitLab fora do ar por um momento não vira e-mail
+// (o deploy do próximo ciclo já avisa se persistir).
 if ($_daemon && GitCheck::alert ($check))
-	Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - GITLAB ACCESS WARNING', mailBody ());
+	Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - '. (GitCheck::alert ($check, FALSE) ? 'GITLAB' : 'S3 BUCKET') .' ACCESS WARNING', mailBody ());

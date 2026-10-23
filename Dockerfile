@@ -49,6 +49,7 @@ RUN set -ex \
  && cp /app/job/backup /etc/periodic/daily/ \
  && cp /app/job/check /etc/periodic/daily/ \
  && cp /app/job/cleaner /etc/periodic/daily/ \
+ && cp /app/job/cloud /etc/periodic/daily/ \
  && cp /app/job/sanitize /etc/periodic/monthly/ \
  && chmod a+x /etc/periodic/15min/* \
  && chmod a+x /etc/periodic/hourly/* \

@@ -161,6 +161,20 @@ $_operations = [
 		'maintenance',
 		'Rotate the backup files of builds: keeps the last 7 daily, 4 weekly, 3 monthly and 1 yearly (the first backup of the year), or what RETENTION sets in the \'.env\' file (\'D/W/M/Y\', e.g., \'14/8/12/3\'). Only files named with the build prefix and a date are considered. With --dry-run, only shows what would be deleted.'
 	),
+	'cloud' => new Operation (
+		'Copy backups to an S3 bucket (and rotate them)',
+		'Controller::cloud',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list]',
+		[
+			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
+			'--all',
+			'proj-b/web@release --dry-run',
+			'proj-b/web@release --list'
+		],
+		'maintenance',
+		'Copy the backup files of builds to an S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO), set once in the \'.env\' file (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and, optionally, S3_REGION), in <bucket>/<project>/<app>/<stage>/. Only uploads what is missing in the bucket (never a mirror: nothing is deleted from it because it left the volume) and then rotates the files in the bucket with S3_RETENTION (\'D/W/M/Y\'; default: RETENTION, or 7/4/3/1). With --dry-run, only shows what would be uploaded and deleted; with --list, only lists the files of the build in the bucket.'
+	),
 	'health' => new Operation (
 		'Report service health to the platform',
 		'Controller::health',
@@ -250,7 +264,7 @@ try
 
 	$_operation = trim ($aux [0]);
 
-	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'health', 'cve', 'check' ]) ? TRUE : FALSE;
+	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'cloud', 'health', 'cve', 'check' ]) ? TRUE : FALSE;
 }
 catch (Exception $e)
 {
@@ -266,6 +280,8 @@ catch (Exception $e)
 		require_once 'vendor/autoload.php';
 		require_once 'class/Controller.php';
 		require_once 'class/GitCheck.php';
+		require_once 'class/BackupVolume.php';
+		require_once 'class/Cloud.php';
 
 		echo "\n". Menu::paint ('Checking access to GitLab...', 'dim', Menu::plain ($daemonCall)) ."\n";
 
@@ -300,6 +316,7 @@ $lifetimes = [
 	'backup' => 7 * 24 * 60, // 1 week
 	'sanitize' => 15 * 24 * 60, // 15 days
 	'cleaner' => 12 * 60, // 12 hours
+	'cloud' => 20 * 60, // 20 hours (roda uma vez por dia; o envio de backups grandes pode demorar)
 	'health' => 10, // 10 minutes (roda a cada minuto)
 	'cve' => 3 * 60, // 3 hours (roda a cada hora)
 	'check' => 60 // 1 hour (roda uma vez por dia)
@@ -332,6 +349,7 @@ require_once 'class/GitClient.php';
 require_once 'class/Controller.php';
 require_once 'class/Retention.php';
 require_once 'class/BackupVolume.php';
+require_once 'class/Cloud.php';
 require_once 'class/Report.php';
 require_once 'class/Trivy.php';
 require_once 'class/GitCheck.php';

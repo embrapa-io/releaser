@@ -216,6 +216,23 @@ class Controller
         require self::PATH .'cleaner.php';
     }
 
+    static public function cloud ($slice, $flag = NULL)
+    {
+        global $_daemon, $_data;
+
+        // `io cloud --dry-run` (ou `--list`), sem lista de builds, equivale a `--all --dry-run`
+        if (in_array (trim ((string) $slice), [ '--dry-run', '--list' ])) { $flag = trim ($slice); $slice = '--all'; }
+
+        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--dry-run', '--list' ]))
+            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run' and '--list'");
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        $_mode = $flag === NULL ? '' : trim ((string) $flag);
+
+        require self::PATH .'cloud.php';
+    }
+
     static public function info ()
     {
         global $_data;

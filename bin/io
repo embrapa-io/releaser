@@ -529,91 +529,26 @@ fi
 chmod 700 /root/.ssh 2> /dev/null
 chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 
-if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
-  echo ""
-
-  echo "${Y}Warning!${N} The builds are not configured yet (directory 'builds/' is missing)."
-
-  echo ""
-
-  echo "Please enter one or more builds, separated by commas, e.g.:"
-  echo "project-a/app1@beta,project-b/web@release,project-a/app2@alpha"
-
-  echo ""
-
-  while
-    read -p "${B}Builds${N}: " input
-    [[ -z $input || $input =~ [^a-z0-9,-/@\ ] ]]
-  do true; done
-
-  builds=$(echo $input | tr "," "\n")
-
-  count=0
-  unset array
-
-  sentry=$(jq -n \
-    --arg dsn "" \
-    '$ARGS.named')
-
-  matomo=$(jq -n \
-    --argjson id 0 \
-    --arg token "" \
-    '$ARGS.named')
-
-  auto=$(jq -n \
-    --argjson deploy true \
-    --argjson backup true \
-    --argjson sanitize true \
-    --argjson cleaner false \
-    --argjson cloud false \
-    '$ARGS.named')
-
-  # O que a build reporta ao core (versão, saúde e CVEs): tudo ligado por padrão.
-  stats=$(jq -n \
-    --argjson version true \
-    --argjson cve true \
-    --argjson health true \
-    '$ARGS.named')
-
+# Sem builds: em vez de pedir uma lista (que gerava esqueletos incompletos), orienta para o
+# 'io install', que busca na plataforma equipe, DSN do Sentry, ID do Matomo e variáveis. O comando
+# pedido segue normalmente depois do aviso (sem comando, abre o menu).
+if [ ! -f "/data/builds.json" ] && ! ls /data/builds/*.json > /dev/null 2>&1 && [ "$1" != "install" ]; then
   mkdir -p /data/builds
 
-  for build in $builds
-  do
-    if [[ ! $build =~ [[:space:]]*([a-z0-9][a-z0-9-]+[a-z0-9])\/([a-z0-9][a-z0-9-]+[a-z0-9])@((alpha)|(beta)|(release))[[:space:]]* ]]; then
-      echo "The build format for '$build' is incorrect! It will be ignored."
-
-      continue
-    fi
-
-    # um arquivo por build: /data/builds/<projeto>_<app>_<estágio>.json
-    jq -n \
-      --arg project ${BASH_REMATCH[1]} \
-      --arg app ${BASH_REMATCH[2]} \
-      --arg stage ${BASH_REMATCH[3]} \
-      --argjson team "[]" \
-      --argjson sentry "$sentry" \
-      --argjson matomo "$matomo" \
-      --argjson auto "$auto" \
-      --argjson stats "$stats" \
-      --argjson env "{}" \
-      '$ARGS.named' > "/data/builds/${BASH_REMATCH[1]}_${BASH_REMATCH[2]}_${BASH_REMATCH[3]}.json"
-
-    ((count++))
-  done
-
-  if (( count == 0 )); then
-    echo "${Y}Warning!${N} No build could be configured. Try again or run 'io install' for a guided setup."
-
-    exit 1
-  fi
-
-  echo "${G}Done!${N} $count build file(s) created in 'builds/' inside the volume directory"
-  echo "shared with the container. Now, complete each file with the e-mails of your"
-  echo "team members, the Sentry DSN, the Matomo ID/token and the environment"
-  echo "variables ('env')."
   echo ""
-  echo "${D}Tip: 'io install' does all of that for you, guided, fetching from the platform"
-  echo "what only the platform knows.${N}"
+
+  echo "${Y}Warning!${N} No builds are configured yet. Add each one with the guided setup, which"
+  echo "fetches the team, the Sentry DSN, the Matomo ID and the variables from the platform:"
+
+  echo ""
+
+  echo "  ${B}io install${N}                    choose among the projects your token can access"
+  echo "  ${B}io install project/app@stage${N}  or go straight to a build"
+
+  echo ""
+
+  echo "${D}Other first steps: 'io cli' (the 'io' command on this host, without 'docker exec'),"
+  echo "'io cloud --setup' (copy the backups to an S3 bucket) and 'io check'.${N}"
 fi
 
 echo ""

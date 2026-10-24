@@ -216,6 +216,44 @@ class Controller
         require self::PATH .'cleaner.php';
     }
 
+    static public function cloud ($slice, $flag = NULL)
+    {
+        global $_daemon, $_data;
+
+        // `io cloud --setup` (perguntas do S3 e da retenção) é interativo e roda no entrypoint `io` (bin/io), não aqui
+        if (trim ((string) $slice) === '--setup')
+            throw new Exception ("'cloud --setup' is interactive and runs in the 'io' entrypoint: docker exec -it releaser io cloud --setup");
+
+        // `io cloud --dry-run` (ou `--list`, `--verify`), sem lista de builds, equivale a `--all --dry-run` etc.
+        if (in_array (trim ((string) $slice), [ '--dry-run', '--list', '--verify' ])) { $flag = trim ($slice); $slice = '--all'; }
+
+        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--dry-run', '--list', '--verify' ]))
+            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run', '--list', '--verify' and '--setup'");
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        $_mode = $flag === NULL ? '' : trim ((string) $flag);
+
+        require self::PATH .'cloud.php';
+    }
+
+    static public function cli ($flag = NULL, $flag2 = NULL)
+    {
+        $_flags = [];
+
+        foreach ([ $flag, $flag2 ] as $f)
+        {
+            if ($f === NULL) continue;
+
+            if (!in_array (trim ((string) $f), [ '--print', '--uninstall', '--yes' ]))
+                throw new Exception ("Unknown parameter '". $f ."'. The options accepted by 'cli' are '--print', '--uninstall' and '--yes'");
+
+            $_flags [] = trim ($f);
+        }
+
+        require self::PATH .'cli.php';
+    }
+
     static public function info ()
     {
         global $_data;

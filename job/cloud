@@ -1,0 +1,15 @@
+#!/bin/sh
+
+umask 022
+
+if [ ! -f "/data/.env" ]; then
+  echo "$(date) - $(realpath $0) - ERROR: /data/.env file not found" >> /var/log/daemon.log
+
+  exit 1
+fi
+
+echo "$(date) - $(realpath $0)" >> /var/log/daemon.log
+
+export $(cat /data/.env)
+
+/usr/local/bin/php /app/run.php cloud:daemon --all >> /dev/null 2>&1

@@ -15,6 +15,9 @@
  * Usado pelo menu do `io` (uma linha de resumo), pelo `io check` (detalhe) e
  * pelo daemon diário `check:daemon`, que só manda e-mail quando há o que fazer
  * (ver alert ()). Nunca lança exceção: o menu não pode quebrar por causa dele.
+ *
+ * No `io check` (não no menu, que precisa ser rápido), também o acesso ao
+ * bucket S3 da cópia em nuvem, quando configurado (Cloud::check ()).
  */
 class GitCheck
 {
@@ -23,14 +26,15 @@ class GitCheck
     const SLOW = 2000; // milissegundos
     const EXPIRING = 14; // dias
 
-    static public function run ($data = '/data')
+    static public function run ($data = '/data', $cloud = FALSE)
     {
         $api = self::api ();
 
         return [
             'api' => $api,
             'token' => $api ['token'],
-            'clone' => self::cloneAccess ($data)
+            'clone' => self::cloneAccess ($data),
+            'cloud' => $cloud ? Cloud::check () : NULL
         ];
     }
 
@@ -251,9 +255,9 @@ class GitCheck
     {
         $worst = 'OK';
 
-        foreach ([ 'api', 'token', 'clone' ] as $key)
+        foreach ([ 'api', 'token', 'clone', 'cloud' ] as $key)
         {
-            if (!$check [$key]) continue;
+            if (empty ($check [$key])) continue;
 
             if ($check [$key]['status'] == 'ERROR') $worst = 'ERROR';
             elseif ($check [$key]['status'] == 'WARNING' && $worst == 'OK') $worst = 'WARNING';
@@ -265,16 +269,22 @@ class GitCheck
 
         $parts [] = ($check ['clone']['via'] ?? 'Clone') .': '. $check ['clone']['message'];
 
+        if (!empty ($check ['cloud'])) $parts [] = 'S3 '. $check ['cloud']['message'];
+
         $label = [ 'OK' => [ 'Success!', 'green' ], 'WARNING' => [ 'Warning!', 'yellow' ], 'ERROR' => [ 'Error!', 'red' ] ][$worst];
 
         return Menu::paint ($label [0], $label [1], $plain) .' '. implode (' | ', $parts) . ($worst == 'OK' ? '' : "\nRun 'io check' for details.");
     }
 
-    /** Há o que avisar por e-mail? Indisponibilidade passageira não conta. */
-    static public function alert ($check)
+    /**
+     * Há o que avisar por e-mail? Indisponibilidade passageira do GitLab não
+     * conta; falha no acesso ao bucket S3, sim (o daemon é diário: no máximo um
+     * e-mail por dia). Com $cloud FALSE, só o GitLab.
+     */
+    static public function alert ($check, $cloud = TRUE)
     {
-        foreach ([ 'token', 'clone' ] as $key)
-            if ($check [$key] && !empty ($check [$key]['alert'])) return TRUE;
+        foreach ($cloud ? [ 'token', 'clone', 'cloud' ] : [ 'token', 'clone' ] as $key)
+            if (!empty ($check [$key]) && !empty ($check [$key]['alert'])) return TRUE;
 
         return FALSE;
     }

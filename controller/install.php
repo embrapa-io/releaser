@@ -26,11 +26,33 @@ $ask = function ($prompt, $default = '') use ($_yes)
 	return $line === '' ? $default : $line;
 };
 
-$confirm = function ($prompt, $default = TRUE) use ($ask)
+// Sim/não: a letra maiúscula em (Y/n) ou (y/N) já indica o padrão, sem "[y]". Em terminal, como no
+// assistente do bin/io, a linha é reescrita com a resposta efetiva (Yes em verde, No em amarelo).
+$confirm = function ($prompt, $default = TRUE) use ($_yes)
 {
-	$answer = strtolower ($ask ($prompt .' ('. ($default ? 'Y/n' : 'y/N') .')', $default ? 'y' : 'n'));
+	if ($_yes) return $default;
 
-	return in_array ($answer, [ 'y', 'yes', 's', 'sim' ]);
+	$question = $prompt .' ('. ($default ? 'Y/n' : 'y/N') .')';
+
+	while (TRUE)
+	{
+		echo $question .': ';
+
+		$line = fgets (STDIN);
+
+		$answer = $line === FALSE ? '' : strtolower (trim ($line));
+
+		if ($answer === '') $result = $default;
+		elseif (in_array ($answer, [ 'y', 'yes', 's', 'sim' ])) $result = TRUE;
+		elseif (in_array ($answer, [ 'n', 'no', 'nao', 'não' ])) $result = FALSE;
+		elseif ($line === FALSE) $result = $default;
+		else continue;
+
+		if (function_exists ('posix_isatty') && posix_isatty (STDIN) && posix_isatty (STDOUT) && getenv ('NO_COLOR') === FALSE)
+			echo "\033[1A\033[2K". $question .': '. ($result ? "\033[1;32mYes\033[0m" : "\033[1;33mNo\033[0m") ."\n";
+
+		return $result;
+	}
 };
 
 $choose = function ($prompt, array $options) use ($ask, $_yes)

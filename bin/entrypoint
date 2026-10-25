@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# Partida do contêiner (ENTRYPOINT, depois do tini): restaura a chave SSH do GitLab
+# a partir de /data/ssh, como o `io` faz, para os jobs do cron clonarem mesmo num
+# contêiner recriado (`io upgrade`, atualização manual, restart do host) sem ninguém
+# rodar o `io`. Só copia o que já existe: gerar o par de chaves continua com o `io`,
+# que mostra a chave pública para cadastrar no GitLab. Sem argumentos, só faz isso
+# (o `io upgrade` chama assim no contêiner novo); com argumentos, segue com `exec`.
+# Nunca impede a partida: sem `set -e`, falha de cópia ou de permissão é ignorada.
+
+umask 022
+
+if [ -f /data/ssh ] && [ ! -f /root/.ssh/id_rsa ]; then
+  mkdir -p /root/.ssh && cp /data/ssh /root/.ssh/id_rsa && chmod 600 /root/.ssh/id_rsa
+fi
+
+if [ -f /root/.ssh/id_rsa ] && [ ! -f /root/.ssh/config ]; then
+  printf 'Host *\n\tStrictHostKeyChecking no\n\n' > /root/.ssh/config
+fi
+
+chmod 700 /root/.ssh 2> /dev/null
+chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
+
+if [ $# -gt 0 ]; then
+  exec "$@"
+fi
+
+exit 0

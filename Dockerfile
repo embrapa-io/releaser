@@ -62,6 +62,7 @@ RUN set -ex \
 
 ENV PATH=/app/bin:$PATH
 
-ENTRYPOINT ["/sbin/tini", "--"]
+# bin/entrypoint restaura a chave SSH de /data/ssh a cada partida (ver o script) e segue com o CMD.
+ENTRYPOINT ["/sbin/tini", "--", "/app/bin/entrypoint"]
 
 CMD ["/usr/sbin/crond", "-f"]

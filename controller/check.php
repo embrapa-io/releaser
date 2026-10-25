@@ -48,11 +48,34 @@ if ($check ['cloud'])
 	echo "\n";
 }
 
+// Versão do Releaser: há uma mais nova publicada? (consulta agora; falha de rede não é erro)
+$check ['release'] = Upgrade::check ($_data);
+
+echo "INFO > Releaser version (". Upgrade::repository () .")... \n";
+
+echo $prefix [$check ['release']['status']] ." > Releaser: ". $check ['release']['message'] ." \n";
+
+echo "\n";
+
 echo GitCheck::summary ($check, Menu::plain ($_daemon)) ."\n";
 
 // No daemon (diário), e-mail só quando há o que fazer: token vencido, revogado,
 // sem escopo ou perto de vencer, clone recusado ou bucket S3 inacessível (no
 // máximo um e-mail por dia). GitLab fora do ar por um momento não vira e-mail
 // (o deploy do próximo ciclo já avisa se persistir).
-if ($_daemon && GitCheck::alert ($check))
-	Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - '. (GitCheck::alert ($check, FALSE) ? 'GITLAB' : 'S3 BUCKET') .' ACCESS WARNING', mailBody ());
+// Versão nova do Releaser: e-mail uma vez por versão (marca em /data/.update/latest.json), nunca diário.
+$update = $_daemon && isset ($check ['release']['version']) && Upgrade::notify ($_data, $check ['release']['version']);
+
+if ($update)
+	echo "\nINFO > To upgrade, run on the server: docker exec -it ". (getenv ('ORCHESTRATOR') == 'DockerSwarm' ? '$(docker ps -q -f name=releaser)' : 'releaser') ." io upgrade (or 'io upgrade', with the 'io' command installed by 'io cli'). Notes of each version: https://github.com/embrapa-io/releaser#vers%C3%B5es \n";
+
+if ($_daemon && (GitCheck::alert ($check) || $update))
+{
+	$subject = [];
+
+	if (GitCheck::alert ($check)) $subject [] = (GitCheck::alert ($check, FALSE) ? 'GITLAB' : 'S3 BUCKET') .' ACCESS WARNING';
+
+	if ($update) $subject [] = 'UPDATE AVAILABLE ('. $check ['release']['version'] .')';
+
+	Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - '. implode (' and ', $subject), mailBody ());
+}

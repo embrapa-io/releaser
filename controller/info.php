@@ -1,8 +1,25 @@
 <?php
 
-self::singleton ();
-
 $_apps = $_data . DIRECTORY_SEPARATOR .'apps';
+
+// o próprio Releaser: versão, a mais nova publicada (cache do menu/`io check`) e a última troca (`io upgrade`)
+echo "\n";
+
+echo "=== Releaser === \n";
+
+$latest = Upgrade::latest ($_data);
+
+$update = Upgrade::available ($_data);
+
+echo "Version: ". (Upgrade::current () !== '' ? Upgrade::current () : 'dev') ." (". Upgrade::repository () .", ". getenv ('ORCHESTRATOR') .") \n";
+
+echo "Latest published: ". (isset ($latest ['version']) ? $latest ['version'] .' (checked at '. ($latest ['checked_at'] ?? '?') .')' : 'unknown'. (isset ($latest ['error']) ? ' ('. $latest ['error'] .')' : '')) . ($update !== NULL ? " - UPDATE AVAILABLE: run 'io upgrade'" : '') ." \n";
+
+echo "Last upgrade: ". Upgrade::describe (Upgrade::last ($_data)) ." \n";
+
+if ($_noBuilds !== NULL) throw $_noBuilds;
+
+self::singleton ();
 
 foreach ($_builds as $_build => $_b)
 {

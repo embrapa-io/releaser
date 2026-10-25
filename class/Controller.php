@@ -254,11 +254,50 @@ class Controller
         require self::PATH .'cli.php';
     }
 
+    static public function upgrade (...$args)
+    {
+        global $_data, $lifetimes;
+
+        $_to = NULL;
+        $_yes = FALSE;
+        $_dry = FALSE;
+        $_helper = FALSE;
+
+        for ($i = 0; $i < sizeof ($args); $i++)
+        {
+            $arg = trim ((string) $args [$i]);
+
+            if ($arg === '--yes') $_yes = TRUE;
+            elseif ($arg === '--dry-run') $_dry = TRUE;
+            elseif ($arg === '--helper') $_helper = TRUE; // interno: o contêiner auxiliar da troca
+            elseif ($arg === '--to' && isset ($args [$i + 1])) $_to = trim ((string) $args [++$i]);
+            elseif (strpos ($arg, '--to=') === 0) $_to = trim (substr ($arg, 5));
+            else
+                throw new Exception ("Unknown parameter '". $arg ."'. The options accepted by 'upgrade' are '--to VERSION', '--yes' and '--dry-run'");
+        }
+
+        $_lifetimes = is_array ($lifetimes) ? $lifetimes : [];
+
+        require self::PATH .'upgrade.php';
+    }
+
     static public function info ()
     {
         global $_data;
 
-        $_builds = self::getBuilds ($_data, '--all');
+        // sem builds, o bloco do próprio Releaser (versão, última atualização) sai antes do erro
+        $_noBuilds = NULL;
+
+        try
+        {
+            $_builds = self::getBuilds ($_data, '--all');
+        }
+        catch (Exception $e)
+        {
+            $_builds = [];
+
+            $_noBuilds = $e;
+        }
 
         require self::PATH .'info.php';
     }

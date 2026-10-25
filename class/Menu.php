@@ -93,8 +93,12 @@ class Menu
         return $out;
     }
 
-    /** O menu completo (sem comando ou com um inexistente). */
-    public static function render (array $operations, $container, $daemon = FALSE)
+    /**
+     * O menu completo (sem comando ou com um inexistente). $notes destaca
+     * comandos ([comando => nota], ex.: 'upgrade' com versão nova): nome e nota
+     * em amarelo.
+     */
+    public static function render (array $operations, $container, $daemon = FALSE, array $notes = [])
     {
         $plain = self::plain ($daemon);
 
@@ -123,7 +127,18 @@ class Menu
             $out .= "\n". self::paint ($label, 'bold', $plain) ."\n";
 
             foreach ($groups [$key] as $op => $obj)
-                $out .= '  '. self::paint (str_pad ($op, $name + 2), 'cyan', $plain) . self::wrap ($obj->info, $width, $column) ."\n";
+            {
+                if (!isset ($notes [$op]))
+                {
+                    $out .= '  '. self::paint (str_pad ($op, $name + 2), 'cyan', $plain) . self::wrap ($obj->info, $width, $column) ."\n";
+
+                    continue;
+                }
+
+                $text = self::wrap ($obj->info .' ['. $notes [$op] .']', $width, $column);
+
+                $out .= '  '. self::paint (str_pad ($op, $name + 2), 'yellow', $plain) . ($plain ? $text : str_replace ('['. $notes [$op] .']', self::paint ('['. $notes [$op] .']', 'yellow', $plain), $text)) ."\n";
+            }
         }
 
         $out .= "\n". self::wrap ("Run 'docker exec -it ". $container ." io COMMAND --help' for the details, options and examples of a command.", $width, 0) ."\n";

@@ -17,7 +17,8 @@
  * (ver alert ()). Nunca lança exceção: o menu não pode quebrar por causa dele.
  *
  * No `io check` (não no menu, que precisa ser rápido), também o acesso ao
- * bucket S3 da cópia em nuvem, quando configurado (Cloud::check ()).
+ * bucket S3 da cópia em nuvem, quando configurado (Cloud::check ()), e a versão
+ * do Releaser (Upgrade::check (), chave 'release', OK ou WARNING).
  */
 class GitCheck
 {
@@ -255,7 +256,7 @@ class GitCheck
     {
         $worst = 'OK';
 
-        foreach ([ 'api', 'token', 'clone', 'cloud' ] as $key)
+        foreach ([ 'api', 'token', 'clone', 'cloud', 'release' ] as $key)
         {
             if (empty ($check [$key])) continue;
 
@@ -270,6 +271,8 @@ class GitCheck
         $parts [] = ($check ['clone']['via'] ?? 'Clone') .': '. $check ['clone']['message'];
 
         if (!empty ($check ['cloud'])) $parts [] = 'S3 '. $check ['cloud']['message'];
+
+        if (!empty ($check ['release'])) $parts [] = 'Releaser '. $check ['release']['message'];
 
         $label = [ 'OK' => [ 'Success!', 'green' ], 'WARNING' => [ 'Warning!', 'yellow' ], 'ERROR' => [ 'Error!', 'red' ] ][$worst];
 

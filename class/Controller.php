@@ -258,7 +258,19 @@ class Controller
     {
         global $_data;
 
-        $_builds = self::getBuilds ($_data, '--all');
+        // sem builds, o bloco do próprio Releaser (versão, última atualização) sai antes do erro
+        $_noBuilds = NULL;
+
+        try
+        {
+            $_builds = self::getBuilds ($_data, '--all');
+        }
+        catch (Exception $e)
+        {
+            $_builds = [];
+
+            $_noBuilds = $e;
+        }
 
         require self::PATH .'info.php';
     }

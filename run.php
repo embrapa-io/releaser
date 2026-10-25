@@ -301,7 +301,19 @@ catch (Exception $e)
 	// Em modo daemon a saída vira e-mail: nada de logo, cor ou escape (Menu::plain).
 	$daemonCall = isset ($argv [1]) && strpos ($argv [1], ':daemon') !== FALSE;
 
-	echo Menu::render ($_operations, $container, $daemonCall);
+	// Versão nova do Releaser (cache de 24 h; consulta de até 3 s, falha silenciosa): destaca o 'upgrade'.
+	$update = NULL;
+
+	try
+	{
+		require_once 'vendor/autoload.php';
+		require_once 'class/Upgrade.php';
+
+		$update = $daemonCall ? NULL : Upgrade::available ();
+	}
+	catch (\Throwable $e) {}
+
+	echo Menu::render ($_operations, $container, $daemonCall, $update !== NULL ? [ 'upgrade' => $update .' available' ] : []);
 
 	// Teste rápido do acesso ao GitLab no fim do menu. Só chega aqui quem chamou o
 	// `io` sem comando (ou com um inexistente); os jobs do daemon sempre passam um.
@@ -315,7 +327,18 @@ catch (Exception $e)
 
 		echo "\n". Menu::paint ('Checking access to GitLab...', 'dim', Menu::plain ($daemonCall)) ."\n";
 
-		echo GitCheck::summary (GitCheck::run (), Menu::plain ($daemonCall)) ."\n\n";
+		echo GitCheck::summary (GitCheck::run (), Menu::plain ($daemonCall)) ."\n";
+
+		if ($update !== NULL)
+			echo Menu::paint (Upgrade::notice ($update), 'yellow', Menu::plain ($daemonCall)) ."\n";
+
+		// resultado da última troca, uma vez: quem rodou o `io upgrade` perdeu a sessão no meio
+		$last = $daemonCall ? NULL : Upgrade::unseen ();
+
+		if ($last !== NULL)
+			echo Menu::paint ('Last upgrade of the Releaser: '. Upgrade::describe ($last), $last ['result'] === 'ok' ? 'green' : ($last ['result'] === 'running' ? 'yellow' : 'red'), Menu::plain ($daemonCall)) ."\n";
+
+		echo "\n";
 	}
 	catch (\Throwable $e)
 	{
@@ -359,6 +382,8 @@ $_sentryQuiet = $_daemon && $_operation === 'health';
 $_lock = $_data . DIRECTORY_SEPARATOR .'.lock'. DIRECTORY_SEPARATOR . $_operation;
 
 @mkdir (dirname ($_lock));
+
+require_once 'class/Upgrade.php';
 
 if ($_daemon)
 {

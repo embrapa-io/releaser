@@ -324,13 +324,44 @@ foreach ($env as $name => $value)
 
 echo "\n";
 
-if (sizeof ($volumes))
+// Volumes externos que ainda não existem. O de backup ({projeto}_{app}_{estágio}_backup, padrão dos boilerplates)
+// vai ligado à pasta BACKUP_DIR do host (bind), compartilhada por todas as builds: fácil de listar, copiar e
+// restaurar, e o cleaner/cloud só tocam nos arquivos com o prefixo de cada build.
+$exists = function ($volume)
 {
-	echo "WARNING > Before the first deploy, create the external volume(s) of this build (this command does not create them yet): \n\n";
+	exec ('/usr/bin/docker volume inspect '. escapeshellarg ($volume) .' > /dev/null 2>&1', $trash, $return);
 
-	foreach ($volumes as $volume) echo "  docker volume create ". $volume ."\n";
+	return $return === 0;
+};
+
+$backupDir = rtrim (trim ((string) getenv ('BACKUP_DIR')), '/');
+
+if ($backupDir === '') $backupDir = '/root/backup';
+
+$backupVolume = $project .'_'. $app .'_'. $stage .'_backup';
+
+$missing = array_values (array_filter (array_unique ($volumes), function ($v) use ($backupVolume, $exists) { return $v !== $backupVolume && !$exists ($v); }));
+
+$missingBackup = !$exists ($backupVolume);
+
+if (sizeof ($missing) || $missingBackup)
+{
+	echo "WARNING > Before the first deploy, create the external volume(s) of this build on the host (this command does not create them): \n\n";
+
+	foreach ($missing as $volume) echo "  docker volume create ". $volume ."\n";
+
+	if ($missingBackup)
+	{
+		if (sizeof ($missing)) echo "\n";
+
+		echo "  mkdir -p ". $backupDir ."\n";
+		echo "  docker volume create --driver local --opt type=none --opt o=bind --opt device=". $backupDir ." ". $backupVolume ."\n";
+	}
 
 	echo "\n";
+
+	if ($missingBackup)
+		echo "INFO > The backup volume is bound to '". $backupDir ."' (BACKUP_DIR), shared by all builds of this server. If the app has no 'backup' service, it is not needed. \n\n";
 }
 
 echo "INFO > Review the file if needed, then deploy with: io deploy ". $build ." \n";

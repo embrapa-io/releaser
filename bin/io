@@ -187,6 +187,16 @@ ask_retention() {
   ask_value retention "Backup retention on this server (daily/weekly/monthly/yearly)" "[${1:-7/4/3/1}]" "${1:-7/4/3/1}" "$RETENTION_RE"
 }
 
+# Pasta do host onde ficam os backups de todas as builds (BACKUP_DIR). 'io install' orienta
+# a criar o volume _backup de cada build ligado a ela (bind). $1 = valor atual.
+ask_backup_dir() {
+  echo "Folder on this server where the backups of ${B}all builds${N} are stored (easy to list, copy and"
+  echo "restore; the files of each build start with project_app_stage_). Keep it out of the Releaser"
+  echo "directory and, if the server has one, on a data disk."
+
+  ask_value backup_dir "Backup folder on this server" "[${1:-/root/backup}]" "${1:-/root/backup}" '^/[A-Za-z0-9._/-]+$'
+}
+
 # Perguntas do bucket S3 (assistente inicial e `io cloud --setup`): endpoint, bucket,
 # chave, segredo, região e retenção no bucket; depois testa o acesso e deixa corrigir
 # ou seguir assim mesmo. $1 = retenção local (padrão da retenção no bucket). Os
@@ -273,7 +283,7 @@ env_update() {
 # `io cloud --setup`: só as perguntas da retenção e do bucket S3, numa instalação que
 # já tem o .env (o assistente inicial não roda de novo).
 cloud_setup() {
-  local retention cloud default remove_s3
+  local retention backup_dir cloud default remove_s3
 
   echo ""
 
@@ -283,6 +293,10 @@ cloud_setup() {
   echo ""
 
   ask_retention "${RETENTION:-}"
+
+  echo ""
+
+  ask_backup_dir "${BACKUP_DIR:-}"
 
   echo ""
 
@@ -299,17 +313,17 @@ cloud_setup() {
 
     ask_s3 "$retention"
 
-    env_update 'RETENTION|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention" "$(s3_lines)"
+    env_update 'RETENTION|BACKUP_DIR|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention" "BACKUP_DIR=$backup_dir" "$(s3_lines)"
   elif [ "$default" = y ]; then
     ask_yes_no remove_s3 "Remove the current S3 settings from the '.env' file (the cloud copy stops)?" n
 
     if [ "$remove_s3" = yes ]; then
-      env_update 'RETENTION|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention"
+      env_update 'RETENTION|BACKUP_DIR|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention" "BACKUP_DIR=$backup_dir"
     else
-      env_update 'RETENTION' "RETENTION=$retention"
+      env_update 'RETENTION|BACKUP_DIR' "RETENTION=$retention" "BACKUP_DIR=$backup_dir"
     fi
   else
-    env_update 'RETENTION' "RETENTION=$retention"
+    env_update 'RETENTION|BACKUP_DIR' "RETENTION=$retention" "BACKUP_DIR=$backup_dir"
   fi
 
   echo ""
@@ -405,6 +419,10 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
+    ask_backup_dir ""
+
+    echo ""
+
     echo "The backups can also be copied every day to an ${B}S3 bucket owned by you${N}, off this server"
     echo "(the 3-2-1 rule): AWS S3, Cloudflare R2, Backblaze B2, MinIO or any S3-compatible service."
     echo "The bucket must already exist and the key only needs access to it."
@@ -433,7 +451,8 @@ if [ ! -f "/data/.env" ]; then
     out+="SMTP_USER=$smtp_user"$'\n'
     out+="SMTP_PASS=$smtp_pass"$'\n'
     out+="LOG_MAIL=$email"$'\n'
-    out+="RETENTION=$retention"
+    out+="RETENTION=$retention"$'\n'
+    out+="BACKUP_DIR=$backup_dir"
 
     # só as variáveis respondidas: nada de S3_* vazio quando a cópia em nuvem não foi pedida
     if [ "$cloud" = yes ]; then

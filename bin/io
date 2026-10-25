@@ -18,6 +18,306 @@ else
   B=''; D=''; G=''; Y=''; R=''; N=''
 fi
 
+# Entrada E saída são um terminal? Só então a linha de cada pergunta é reescrita com
+# a resposta efetiva (\e[1A\e[2K). Com respostas pela entrada padrão (automação,
+# testes) ou saída redirecionada, sai uma linha simples "pergunta: resposta", sem
+# códigos de escape. Cores seguem a regra acima (NO_COLOR, TERM=dumb).
+if [ -t 0 ] && [ -t 1 ] && [ "$TERM" != "dumb" ]; then TTY=1; else TTY=''; fi
+
+# Formato de RETENTION / S3_RETENTION: 'D/W/M/Y', a mesma regra de Retention::parse.
+RETENTION_RE='^[0-9]{1,4}/[0-9]{1,4}/[0-9]{1,4}/[0-9]{1,4}$'
+
+# Mascara um segredo para a tela: só os 4 últimos caracteres (nenhum, se for curto).
+mask() {
+  if [ ${#1} -gt 8 ]; then echo "••••••••${1: -4}"; else echo "••••••••"; fi
+}
+
+# Faz a pergunta ($1) com a dica ($2, ex.: "(y/N)" ou "[7/4/3/1]") e lê REPLY; com $3
+# = secret, lê sem eco. Fim da entrada (respostas pela entrada padrão esgotadas) aborta.
+prompt() {
+  local hint=''
+  [ -n "$2" ] && hint=" $2"
+
+  if [ -n "$TTY" ]; then
+    if [ "$3" = secret ]; then
+      read -r -s -p "${B}$1${N}$hint: " REPLY || { echo; echo "${R}Error!${N} End of input while waiting for an answer."; exit 1; }
+      echo
+    else
+      read -r -p "${B}$1${N}$hint: " REPLY || { echo; echo "${R}Error!${N} End of input while waiting for an answer."; exit 1; }
+    fi
+  else
+    printf '%s%s: ' "$1" "$hint"
+
+    if [ "$3" = secret ]; then
+      read -r -s REPLY || { echo; echo "Error! End of input while waiting for an answer."; exit 1; }
+    else
+      read -r REPLY || { echo; echo "Error! End of input while waiting for an answer."; exit 1; }
+    fi
+  fi
+}
+
+# Mostra a resposta efetiva ($2, já formatada) da pergunta ($1): em terminal, apaga a
+# linha da pergunta e a reimprime como "pergunta: resposta"; senão, completa a linha.
+answered() {
+  if [ -n "$TTY" ]; then
+    printf '\e[1A\e[2K%s: %s\n' "${B}$1${N}" "$2"
+  else
+    printf '%s\n' "$2"
+  fi
+}
+
+# ask_value VAR "Pergunta" "dica" "padrão" "ERE do valor válido" [optional]
+# Valor livre, sem espaços (o .env é lido com `export $(cat ...)`); Enter = padrão.
+# Inválido ou vazio (sem padrão nem 'optional') repete a pergunta.
+ask_value() {
+  local var=$1 question=$2 hint=$3 default=$4 valid=$5 optional=$6 value
+
+  while :; do
+    prompt "$question" "$hint"
+
+    value=${REPLY//[[:space:]]/}
+
+    [ -z "$value" ] && value=$default
+
+    if [ -z "$value" ]; then
+      if [ -n "$optional" ]; then
+        answered "$question" "${D}(none)${N}"
+        printf -v "$var" '%s' ''
+        return 0
+      fi
+    elif [[ $value =~ $valid ]]; then
+      answered "$question" "${B}$value${N}"
+      printf -v "$var" '%s' "$value"
+      return 0
+    fi
+
+    answered "$question" "${R}${value:-(empty)} - invalid, try again${N}"
+  done
+}
+
+# ask_secret VAR "Pergunta" ["valor atual"]: como ask_value, sem eco e mostrando só a
+# máscara; com valor atual, Enter o mantém.
+ask_secret() {
+  local var=$1 question=$2 current=$3 value hint=''
+
+  [ -n "$current" ] && hint="[$(mask "$current")]"
+
+  while :; do
+    prompt "$question" "$hint" secret
+
+    value=${REPLY//[[:space:]]/}
+
+    [ -z "$value" ] && value=$current
+
+    if [ -n "$value" ]; then
+      answered "$question" "${B}$(mask "$value")${N}"
+      printf -v "$var" '%s' "$value"
+      return 0
+    fi
+
+    answered "$question" "${R}(empty) - required, try again${N}"
+  done
+}
+
+# ask_yes_no VAR "Pergunta" y|n (padrão): aceita y, Y, yes, n, N, no e Enter; qualquer
+# outra resposta repete. VAR recebe "yes" ou "no". Yes em verde, No em amarelo.
+ask_yes_no() {
+  local var=$1 question=$2 default=$3 hint answer
+
+  if [ "$default" = y ]; then hint='(Y/n)'; else hint='(y/N)'; fi
+
+  while :; do
+    prompt "$question" "$hint"
+
+    answer=$(echo "$REPLY" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+    [ -z "$answer" ] && answer=$default
+
+    case "$answer" in
+      y|yes) answered "$question" "${B}${G}Yes${N}"; printf -v "$var" '%s' yes; return 0 ;;
+      n|no)  answered "$question" "${B}${Y}No${N}";  printf -v "$var" '%s' no;  return 0 ;;
+    esac
+
+    answered "$question" "${R}${REPLY} - answer y or n${N}"
+  done
+}
+
+# Testa o acesso ao bucket com as respostas (rclone lsd, 5 s), como o `io check`.
+# Credenciais só no ambiente do processo (nada na linha de comando). Imprime OK ou
+# o motivo, sem a chave nem o segredo; devolve o código do rclone.
+s3_test() {
+  local out code
+
+  out=$(RCLONE_CONFIG=/dev/null RCLONE_CONFIG_S3_TYPE=s3 RCLONE_CONFIG_S3_PROVIDER=Other \
+    RCLONE_CONFIG_S3_ENDPOINT="$s3_endpoint" RCLONE_CONFIG_S3_REGION="$s3_region" RCLONE_S3_NO_CHECK_BUCKET=true \
+    RCLONE_CONFIG_S3_ACCESS_KEY_ID="$s3_access" RCLONE_CONFIG_S3_SECRET_ACCESS_KEY="$s3_secret" \
+    timeout 5 rclone lsd "S3:$s3_bucket" --contimeout 5s --timeout 5s --retries 1 --low-level-retries 1 2>&1 > /dev/null)
+  code=$?
+
+  if [ $code -eq 0 ]; then
+    echo "${B}${G}OK${N} (bucket '$s3_bucket' listed)"
+  elif [ $code -eq 124 ] || [ $code -eq 143 ]; then
+    echo "${R}error${N}: no answer from the endpoint in 5 s (timeout; blocked?)"
+  elif [ $code -eq 3 ]; then
+    echo "${R}error${N}: bucket '$s3_bucket' not found (create it in the provider, or fix the name)"
+  elif echo "$out" | grep -qE 'InvalidAccessKeyId|SignatureDoesNotMatch|AccessDenied|InvalidToken|Unauthorized|StatusCode: 40[13]'; then
+    echo "${R}error${N}: access denied (check the access key, the secret key, the region and the permissions of the key on the bucket)"
+  elif echo "$out" | grep -qE 'AuthorizationHeaderMalformed|IllegalLocationConstraintException|PermanentRedirect'; then
+    echo "${R}error${N}: wrong region (AWS and Backblaze B2 expect the real region of the bucket)"
+  elif echo "$out" | grep -qE 'no such host|server misbehaving|name resolution'; then
+    echo "${R}error${N}: cannot resolve the host of the endpoint (DNS)"
+  elif echo "$out" | grep -qE 'connection refused'; then
+    echo "${R}error${N}: connection refused by the endpoint"
+  else
+    # a primeira linha de erro do rclone, sem o carimbo de data/hora e sem a chave ou o segredo
+    out=$(echo "$out" | grep -E 'ERROR|Failed' | head -n 1 | sed -E 's/^[0-9]{4}\/[0-9]{2}\/[0-9]{2} [0-9:]{8} *//; s/^(ERROR *: *)?(error listing: *)?//' | cut -c1-160)
+    out=${out//"$s3_secret"/***}
+    out=${out//"$s3_access"/***}
+    echo "${R}error${N}: ${out:-rclone exit code $code}"
+  fi
+
+  return $code
+}
+
+# Pergunta a retenção local (RETENTION). $1 = valor atual (padrão 7/4/3/1).
+ask_retention() {
+  echo "How many ${B}daily, weekly, monthly and yearly${N} backups to keep in the backup volume of each build:"
+  echo "'io cleaner' deletes the older ones (daily, when 'auto.cleaner' is on in the build file)."
+
+  ask_value retention "Backup retention on this server (daily/weekly/monthly/yearly)" "[${1:-7/4/3/1}]" "${1:-7/4/3/1}" "$RETENTION_RE"
+}
+
+# Perguntas do bucket S3 (assistente inicial e `io cloud --setup`): endpoint, bucket,
+# chave, segredo, região e retenção no bucket; depois testa o acesso e deixa corrigir
+# ou seguir assim mesmo. $1 = retenção local (padrão da retenção no bucket). Os
+# valores atuais (S3_*) são os padrões. Resultado em s3_endpoint, s3_bucket,
+# s3_access, s3_secret, s3_region e s3_retention.
+ask_s3() {
+  local default_region test
+
+  s3_endpoint=${S3_ENDPOINT:-}; s3_bucket=${S3_BUCKET:-}; s3_access=${S3_ACCESS_KEY:-}; s3_secret=${S3_SECRET_KEY:-}
+  s3_region=${S3_REGION:-}; s3_retention=${S3_RETENTION:-}
+
+  while :; do
+    ask_value s3_endpoint "S3 endpoint" "(e.g., https://<account>.r2.cloudflarestorage.com)" "$s3_endpoint" '^[A-Za-z0-9][A-Za-z0-9.:/_-]*$'
+    ask_value s3_bucket "S3 bucket" "(only the name; it must already exist)" "$s3_bucket" '^[A-Za-z0-9][A-Za-z0-9._-]{1,254}$'
+    ask_value s3_access "S3 access key" "" "$s3_access" '^[[:graph:]]+$'
+    ask_secret s3_secret "S3 secret key" "$s3_secret"
+
+    # AWS e Backblaze B2 exigem a região real; ela está no endpoint (s3.<região>.amazonaws.com)
+    default_region=${s3_region:-auto}
+
+    if [ "$default_region" = auto ] && [[ $s3_endpoint =~ s3[.-]([a-z0-9-]+)\.(amazonaws\.com|backblazeb2\.com) ]]; then
+      default_region=${BASH_REMATCH[1]}
+    fi
+
+    ask_value s3_region "S3 region" "[$default_region]" "$default_region" '^[a-z0-9-]+$'
+    ask_value s3_retention "Backup retention in the bucket (daily/weekly/monthly/yearly)" "[${s3_retention:-$1}]" "${s3_retention:-$1}" "$RETENTION_RE"
+
+    echo ""
+
+    printf '%s' "Testing access to the bucket... "
+
+    if s3_test; then
+      break
+    fi
+
+    echo ""
+
+    ask_yes_no s3_anyway "Keep these S3 settings anyway?" n
+
+    [ "$s3_anyway" = yes ] && break
+
+    echo ""
+  done
+
+  echo ""
+
+  echo "${D}Note: the copy to the bucket runs only for the builds with \"auto\": { \"cloud\": true } in their file.${N}"
+}
+
+# Linhas S3_* para o .env, a partir das respostas de ask_s3.
+s3_lines() {
+  printf 'S3_ENDPOINT=%s\nS3_BUCKET=%s\nS3_ACCESS_KEY=%s\nS3_SECRET_KEY=%s\nS3_REGION=%s\nS3_RETENTION=%s\n' \
+    "$s3_endpoint" "$s3_bucket" "$s3_access" "$s3_secret" "$s3_region" "$s3_retention"
+}
+
+# Imprime o conteúdo de um .env com os segredos mascarados.
+env_summary() {
+  local line
+
+  while IFS= read -r line; do
+    case "$line" in
+      GITLAB_TOKEN=*|SMTP_PASS=*|S3_SECRET_KEY=*) echo "${line%%=*}=$(mask "${line#*=}")" ;;
+      *) echo "$line" ;;
+    esac
+  done <<< "$1"
+}
+
+# Acrescenta ou atualiza variáveis no /data/.env preservando as outras linhas e a
+# permissão do arquivo (escreve no mesmo inode). $1 = ERE dos nomes a remover antes;
+# os demais argumentos são as linhas novas.
+env_update() {
+  local remove=$1 content
+  shift
+
+  content=$(grep -v -E "^($remove)=" /data/.env)
+
+  if [ $# -gt 0 ]; then
+    content+=$'\n'"$(printf '%s\n' "$@")"
+  fi
+
+  printf '%s\n' "$content" | sed '/^$/d' > /data/.env
+}
+
+# `io cloud --setup`: só as perguntas da retenção e do bucket S3, numa instalação que
+# já tem o .env (o assistente inicial não roda de novo).
+cloud_setup() {
+  local retention cloud default remove_s3
+
+  echo ""
+
+  echo "${B}Backup retention and cloud copy (S3)${N}"
+  echo "Enter keeps the current value, shown in brackets."
+
+  echo ""
+
+  ask_retention "${RETENTION:-}"
+
+  echo ""
+
+  echo "The backups can also be copied every day to an ${B}S3 bucket owned by you${N}, off this server"
+  echo "(the 3-2-1 rule): AWS S3, Cloudflare R2, Backblaze B2, MinIO or any S3-compatible service."
+  echo "The bucket must already exist and the key only needs access to it."
+
+  if [ -n "${S3_ENDPOINT:-}" ] && [ -n "${S3_BUCKET:-}" ]; then default=y; else default=n; fi
+
+  ask_yes_no cloud "Do you want to copy the backups to an S3 bucket in the cloud, owned by you?" "$default"
+
+  if [ "$cloud" = yes ]; then
+    echo ""
+
+    ask_s3 "$retention"
+
+    env_update 'RETENTION|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention" "$(s3_lines)"
+  elif [ "$default" = y ]; then
+    ask_yes_no remove_s3 "Remove the current S3 settings from the '.env' file (the cloud copy stops)?" n
+
+    if [ "$remove_s3" = yes ]; then
+      env_update 'RETENTION|S3_ENDPOINT|S3_BUCKET|S3_ACCESS_KEY|S3_SECRET_KEY|S3_REGION|S3_RETENTION' "RETENTION=$retention"
+    else
+      env_update 'RETENTION' "RETENTION=$retention"
+    fi
+  else
+    env_update 'RETENTION' "RETENTION=$retention"
+  fi
+
+  echo ""
+
+  echo "${G}Done!${N} The '.env' file in the volume directory shared with the container has been updated."
+  echo "The daemon reads it on the next run. Test with 'io check' and 'io cloud --all --dry-run'."
+}
+
 # Cabeçalho, igual ao do menu (class/Menu.php).
 banner() {
   echo ""
@@ -33,7 +333,7 @@ if [ ! -d "/data" ] || [ ! -f "/data/.env" ]; then
   banner
 
   export IO_BANNER=shown
-elif [ $# -gt 0 ]; then
+elif [ $# -gt 0 ] && ! { [ "$1" = cli ] && [ "${2:-}" = --print ]; }; then
   echo ""
   echo "${D}Embrapa I/O Releaser ${IO_RELEASER_VERSION:-dev} · https://embrapa.io/docs/releaser/${N}"
 fi
@@ -57,10 +357,7 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
-    while
-      read -p "${B}Server name${N} (e.g., foo.example.com): " server
-      [[ -z $server || $server =~ [^a-z0-9-\.] ]]
-    do true; done
+    ask_value server "Server name" "(e.g., foo.example.com)" "" '^[a-z0-9.-]+$'
 
     echo ""
 
@@ -80,50 +377,45 @@ if [ ! -f "/data/.env" ]; then
       [[ -z $orchestrator || $orchestrator != @(DockerCompose|DockerSwarm) ]]
     do true; done
 
+    echo "${B}Container orchestrator${N}: ${B}$orchestrator${N}"
+
     echo ""
 
     echo "Go to https://git.embrapa.io and, in your profile, generate a new"
     echo "Access Token with the 'read_api' scope."
 
-    while
-      read -p "${B}GitLab token${N}: " token
-      [[ -z $token || ${#token} < 10 ]]
-    do true; done
+    ask_secret token "GitLab token"
 
     echo ""
 
-    while
-      read -p "${B}SMTP host${N} (e.g., smtp.gmail.com): " smtp_host
-      [[ -z $smtp_host || $smtp_host =~ [^a-z0-9-\.] ]]
-    do true; done
+    ask_value smtp_host "SMTP host" "(e.g., smtp.gmail.com)" "" '^[a-z0-9.-]+$'
+    ask_value smtp_port "SMTP port" "(e.g., 587)" "" '^[0-9]+$'
+    ask_yes_no smtp_secure "SMTP secure" n
+    ask_value smtp_from "SMTP from" "(e.g., no-reply@embrapa.br)" "" '^[a-zA-Z0-9,@._+-]+$'
+    ask_value smtp_user "SMTP user" "(e.g., you@gmail.com)" "" '^[[:graph:]]+$' optional
+    ask_secret smtp_pass "SMTP password"
 
-    while
-      read -p "${B}SMTP port${N} (e.g., 587): " smtp_port
-      [[ -z $smtp_port || $smtp_port == *[^0-9]* ]]
-    do true; done
+    echo ""
 
-    read -p "${B}SMTP secure${N} (y/N): " smtp_secure
+    ask_value email "Log e-mail" "" "" '^[a-zA-Z0-9,@._+-]+$'
 
-    if [ "$smtp_secure" != "${smtp_secure#[Yy]}" ]; then
-      smtp_secure="yes"
-    else
-      smtp_secure="no"
+    echo ""
+
+    ask_retention ""
+
+    echo ""
+
+    echo "The backups can also be copied every day to an ${B}S3 bucket owned by you${N}, off this server"
+    echo "(the 3-2-1 rule): AWS S3, Cloudflare R2, Backblaze B2, MinIO or any S3-compatible service."
+    echo "The bucket must already exist and the key only needs access to it."
+
+    ask_yes_no cloud "Do you want to copy the backups to an S3 bucket in the cloud, owned by you?" n
+
+    if [ "$cloud" = yes ]; then
+      echo ""
+
+      ask_s3 "$retention"
     fi
-
-    while
-      read -p "${B}SMTP from${N} (e.g., no-reply@embrapa.br): " smtp_from
-      [[ -z $smtp_from || $smtp_from =~ [^a-zA-Z0-9,-@\.] ]]
-    do true; done
-
-    read -p "${B}SMTP user${N} (e.g., you@gmail.com): " smtp_user
-    read -p "${B}SMTP password${N}: " smtp_pass
-
-    echo ""
-
-    while
-      read -p "${B}Log e-mail${N}: " email
-      [[ -z $email || $email =~ [^a-zA-Z0-9,-@\.] ]]
-    do true; done
 
     echo ""
 
@@ -131,34 +423,61 @@ if [ ! -f "/data/.env" ]; then
 
     echo ""
 
-    out="SERVER=${server//[[:space:]]/}"$'\n'
+    out="SERVER=$server"$'\n'
     out+="ORCHESTRATOR=$orchestrator"$'\n'
-    out+="GITLAB_TOKEN=${token//[[:space:]]/}"$'\n'
-    out+="SMTP_HOST=${smtp_host//[[:space:]]/}"$'\n'
-    out+="SMTP_PORT=${smtp_port//[^0-9]/}"$'\n'
+    out+="GITLAB_TOKEN=$token"$'\n'
+    out+="SMTP_HOST=$smtp_host"$'\n'
+    out+="SMTP_PORT=$smtp_port"$'\n'
     out+="SMTP_SECURE=$smtp_secure"$'\n'
-    out+="SMTP_FROM=${smtp_from//[[:space:]]/}"$'\n'
-    out+="SMTP_USER=${smtp_user//[[:space:]]/}"$'\n'
-    out+="SMTP_PASS=${smtp_pass//[[:space:]]/}"$'\n'
-    out+="LOG_MAIL=${email//[[:space:]]/}"
+    out+="SMTP_FROM=$smtp_from"$'\n'
+    out+="SMTP_USER=$smtp_user"$'\n'
+    out+="SMTP_PASS=$smtp_pass"$'\n'
+    out+="LOG_MAIL=$email"$'\n'
+    out+="RETENTION=$retention"
 
-    echo "$out"
+    # só as variáveis respondidas: nada de S3_* vazio quando a cópia em nuvem não foi pedida
+    if [ "$cloud" = yes ]; then
+      out+=$'\n'"$(s3_lines)"
+    fi
+
+    env_summary "$out"
 
     echo ""
 
-    read -p "${B}Is this correct?${N} (y/N): " confirm
+    ask_yes_no confirm "Is this correct?" n
 
-    [[ -z $confirm || "$confirm" == "${confirm#[Yy]}" ]]
+    [ "$confirm" != yes ]
   do true; done
 
   echo "$out" > /data/.env
 
+  JUST_CONFIGURED=1
+
   echo ""
 
-  echo "Note: a '.env' file has been created in the volume directory shared with the container. To change values in the future, edit this file."
+  echo "Note: a '.env' file has been created in the volume directory shared with the container. To change values in the future, edit this file"
+  echo "(or run 'io cloud --setup' for the backup retention and the S3 bucket)."
 fi
 
 export $(cat /data/.env)
+
+# `io cli --print`: só o script do wrapper do host no stdout (para `| sudo tee /usr/local/bin/io`), sem mais nada.
+if [ "${1:-}" = "cli" ] && [ "${2:-}" = "--print" ]; then
+  exec /usr/local/bin/php /app/run.php "$@"
+fi
+
+# `io cloud --setup`: perguntas da retenção e do bucket S3 numa instalação que já tem o .env.
+if [ "${1:-}" = "cloud" ] && [ "${2:-}" = "--setup" ]; then
+  if [ -n "${JUST_CONFIGURED:-}" ]; then
+    echo "The backup retention and the S3 bucket were just set above; nothing else to set up."
+  else
+    cloud_setup
+  fi
+
+  echo ""
+
+  exit 0
+fi
 
 if [ ! -f "/root/.ssh/id_rsa" ]; then
   echo ""
@@ -210,90 +529,26 @@ fi
 chmod 700 /root/.ssh 2> /dev/null
 chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 
-if [ ! -f "/data/builds.json" ] && [ ! -d "/data/builds" ]; then
-  echo ""
-
-  echo "${Y}Warning!${N} The builds are not configured yet (directory 'builds/' is missing)."
-
-  echo ""
-
-  echo "Please enter one or more builds, separated by commas, e.g.:"
-  echo "project-a/app1@beta,project-b/web@release,project-a/app2@alpha"
-
-  echo ""
-
-  while
-    read -p "${B}Builds${N}: " input
-    [[ -z $input || $input =~ [^a-z0-9,-/@\ ] ]]
-  do true; done
-
-  builds=$(echo $input | tr "," "\n")
-
-  count=0
-  unset array
-
-  sentry=$(jq -n \
-    --arg dsn "" \
-    '$ARGS.named')
-
-  matomo=$(jq -n \
-    --argjson id 0 \
-    --arg token "" \
-    '$ARGS.named')
-
-  auto=$(jq -n \
-    --argjson deploy true \
-    --argjson backup true \
-    --argjson sanitize true \
-    --argjson cleaner false \
-    '$ARGS.named')
-
-  # O que a build reporta ao core (versão, saúde e CVEs): tudo ligado por padrão.
-  stats=$(jq -n \
-    --argjson version true \
-    --argjson cve true \
-    --argjson health true \
-    '$ARGS.named')
-
+# Sem builds: em vez de pedir uma lista (que gerava esqueletos incompletos), orienta para o
+# 'io install', que busca na plataforma equipe, DSN do Sentry, ID do Matomo e variáveis. O comando
+# pedido segue normalmente depois do aviso (sem comando, abre o menu).
+if [ ! -f "/data/builds.json" ] && ! ls /data/builds/*.json > /dev/null 2>&1 && [ "$1" != "install" ]; then
   mkdir -p /data/builds
 
-  for build in $builds
-  do
-    if [[ ! $build =~ [[:space:]]*([a-z0-9][a-z0-9-]+[a-z0-9])\/([a-z0-9][a-z0-9-]+[a-z0-9])@((alpha)|(beta)|(release))[[:space:]]* ]]; then
-      echo "The build format for '$build' is incorrect! It will be ignored."
-
-      continue
-    fi
-
-    # um arquivo por build: /data/builds/<projeto>_<app>_<estágio>.json
-    jq -n \
-      --arg project ${BASH_REMATCH[1]} \
-      --arg app ${BASH_REMATCH[2]} \
-      --arg stage ${BASH_REMATCH[3]} \
-      --argjson team "[]" \
-      --argjson sentry "$sentry" \
-      --argjson matomo "$matomo" \
-      --argjson auto "$auto" \
-      --argjson stats "$stats" \
-      --argjson env "{}" \
-      '$ARGS.named' > "/data/builds/${BASH_REMATCH[1]}_${BASH_REMATCH[2]}_${BASH_REMATCH[3]}.json"
-
-    ((count++))
-  done
-
-  if (( count == 0 )); then
-    echo "${Y}Warning!${N} No build could be configured. Try again or run 'io install' for a guided setup."
-
-    exit 1
-  fi
-
-  echo "${G}Done!${N} $count build file(s) created in 'builds/' inside the volume directory"
-  echo "shared with the container. Now, complete each file with the e-mails of your"
-  echo "team members, the Sentry DSN, the Matomo ID/token and the environment"
-  echo "variables ('env')."
   echo ""
-  echo "${D}Tip: 'io install' does all of that for you, guided, fetching from the platform"
-  echo "what only the platform knows.${N}"
+
+  echo "${Y}Warning!${N} No builds are configured yet. Add each one with the guided setup, which"
+  echo "fetches the team, the Sentry DSN, the Matomo ID and the variables from the platform:"
+
+  echo ""
+
+  echo "  ${B}io install${N}                    choose among the projects your token can access"
+  echo "  ${B}io install project/app@stage${N}  or go straight to a build"
+
+  echo ""
+
+  echo "${D}Other first steps: 'io cli' (the 'io' command on this host, without 'docker exec'),"
+  echo "'io cloud --setup' (copy the backups to an S3 bucket) and 'io check'.${N}"
 fi
 
 echo ""

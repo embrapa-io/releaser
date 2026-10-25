@@ -12,9 +12,6 @@ abstract class Orchestrator
     const SSH = '/usr/bin/ssh';
     const DOCKER = '/usr/bin/docker';
 
-    // Imagem mínima usada para listar/apagar arquivos dentro do volume de backup.
-    const CLEANER_IMAGE = 'alpine:3';
-
     // Tempo máximo do pull e do build do `restart --upgrade` (o mesmo do deployer da plataforma).
     const UPGRADE_TIMEOUT = 1200;
 
@@ -160,8 +157,9 @@ abstract class Orchestrator
     /**
      * Rotaciona os arquivos do volume externo de backup da build, aplicando a
      * política de retenção (ver Retention). Compartilhado pelos orquestradores:
-     * o volume é acessado diretamente pelo Docker (docker run -v), sem depender
-     * do serviço 'backup' da stack da aplicação.
+     * o volume é acessado diretamente pelo Docker (BackupVolume, um contêiner
+     * auxiliar da imagem do Releaser), sem depender do serviço 'backup' da stack
+     * da aplicação.
      *
      * @return array Plano executado: ['keep' => [name => tags], 'delete' => [names]]
      */
@@ -171,27 +169,19 @@ abstract class Orchestrator
 
         echo "INFO > Backup volume: '". $volume ."' \n";
 
-        $all = static::listBackupFiles ($volume);
-
-        // Só os arquivos DESTA build ('{project}_{app}_{stage}_...'): o mesmo
-        // volume/diretório pode ser compartilhado por várias builds (dica das
-        // docs do Releaser) e arquivos de outras builds jamais são tocados.
+        // Só os arquivos DESTA build ('{project}_{app}_{stage}_...'): ver BackupVolume::split ().
         $prefix = $namespace .'_';
 
-        $files = [];
-        $foreign = 0;
+        list ($files, $others) = BackupVolume::split (BackupVolume::files ($volume), $namespace);
 
-        foreach ($all as $file)
-            if (strpos ($file ['name'], $prefix) === 0) $files [] = $file; else $foreign++;
-
-        $bytes = function ($list) { $t = 0; foreach ($list as $f) $t += intval ($f ['size'] ?? 0); return $t; };
+        $foreign = sizeof ($others);
 
         $stats = [
             'volume' => $volume,
             'files_before' => sizeof ($files),
-            'bytes_before' => $bytes ($files),
+            'bytes_before' => BackupVolume::bytes ($files),
             'foreign' => $foreign,
-            'bytes_foreign' => $bytes (array_filter ($all, function ($f) use ($prefix) { return strpos ($f ['name'], $prefix) !== 0; }))
+            'bytes_foreign' => BackupVolume::bytes ($others)
         ];
 
         if ($foreign)
@@ -224,7 +214,7 @@ abstract class Orchestrator
                 echo "  ". $name ."\n";
         }
 
-        echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($files) - sizeof ($plan ['ignore'])) ." backup file(s) [D = daily, W = weekly, M = monthly]: \n";
+        echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($files) - sizeof ($plan ['ignore'])) ." backup file(s) [D = daily, W = weekly, M = monthly, Y = yearly]: \n";
 
         foreach ($plan ['keep'] as $name => $tags)
             echo "  ". str_pad ($tags, 4) . str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
@@ -241,9 +231,281 @@ abstract class Orchestrator
         foreach ($plan ['delete'] as $name)
             echo "  ". str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
 
-        if (!$dryRun) static::deleteBackupFiles ($volume, $plan ['delete']);
+        if (!$dryRun) BackupVolume::delete ($volume, $plan ['delete']);
 
         return $plan;
+    }
+
+    /**
+     * Copia os backups da build para o bucket S3 (ver Cloud) e rotaciona o que
+     * está lá com a política do bucket (S3_RETENTION). Compartilhado pelos
+     * orquestradores: só depende do volume de backup. Nesta ordem:
+     *
+     *   1. lista o volume (só arquivos com o prefixo da build);
+     *   2. lista o diretório da build no bucket (idem);
+     *   3. envia o que falta no bucket (`copy --ignore-existing`, nunca `sync`);
+     *   4. lista o bucket de novo, aplica a retenção e apaga o excedente.
+     *
+     * O que falta no bucket mas já está fora da retenção dele (ex.: o volume
+     * guarda mais que o bucket) NÃO é enviado: seria enviado e apagado de novo
+     * a cada dia. Nada é apagado do bucket por ter sumido do volume, e arquivos
+     * sem data no nome são enviados e nunca apagados (salvo em "undated").
+     *
+     * @return array ['keep' => [name => tags], 'delete' => [names], 'upload' => [names], 'stats' => [...]]
+     */
+    public static function cloud ($path, $namespace, $dir, $policy, $dryRun = FALSE)
+    {
+        $volume = static::backupVolume ($path, $namespace);
+
+        echo "INFO > Backup volume: '". $volume ."' \n";
+
+        list ($local, $others) = BackupVolume::split (BackupVolume::files ($volume), $namespace);
+
+        if (sizeof ($others))
+            echo "INFO > Ignoring ". sizeof ($others) ." file(s) of other builds in the same volume (name does not start with '". $namespace ."_'). \n";
+
+        echo "INFO > Bucket: '". Cloud::url ($dir) ."' at '". Cloud::value ('S3_ENDPOINT') ."' \n";
+
+        list ($remote, $others) = BackupVolume::split (Cloud::files ($dir), $namespace);
+
+        if (sizeof ($others))
+            echo "INFO > Ignoring ". sizeof ($others) ." file(s) in the bucket whose name does not start with '". $namespace ."_'. \n";
+
+        echo "INFO > Files of this build: ". sizeof ($local) ." in the volume (". static::humanSize (BackupVolume::bytes ($local)) ."), ". sizeof ($remote) ." in the bucket (". static::humanSize (BackupVolume::bytes ($remote)) ."). \n";
+
+        $stats = [
+            'volume' => $volume,
+            'files_before' => sizeof ($remote),
+            'bytes_before' => BackupVolume::bytes ($remote),
+            'uploaded' => 0,
+            'bytes_uploaded' => 0,
+            'skipped' => 0,
+            'kept' => 0,
+            'deleted' => 0,
+            'bytes_deleted' => 0
+        ];
+
+        if (!sizeof ($local) && !sizeof ($remote))
+        {
+            echo "WARNING > No backup files of this build found in the volume nor in the bucket! \n";
+
+            return [ 'keep' => [], 'delete' => [], 'upload' => [], 'stats' => $stats + [ 'files_after' => 0, 'bytes_after' => 0 ] ];
+        }
+
+        $inBucket = array_column ($remote, NULL, 'name');
+
+        $missing = static::newestFirst (array_filter ($local, function ($f) use ($inBucket) { return !array_key_exists ($f ['name'], $inBucket); }));
+
+        // plano sobre o que o bucket terá: o que já está lá mais o que falta
+        $preview = Retention::plan (array_merge ($remote, $missing), $policy);
+
+        $upload = [];
+        $skip = [];
+
+        foreach ($missing as $file)
+            if (in_array ($file ['name'], $preview ['delete'])) $skip [] = $file; else $upload [] = $file;
+
+        // a lista pode ser longa e se repetir todo dia (volume que guarda mais que o bucket): só os mais recentes
+        if (sizeof ($skip))
+        {
+            echo "INFO > Not uploading ". sizeof ($skip) ." old file(s), already outside the retention of the bucket". (sizeof ($skip) > 10 ? ' (the 10 most recent)' : '') .": \n";
+
+            foreach (array_slice ($skip, 0, 10) as $file)
+                echo "  ". str_pad (static::humanSize ($file ['size']), 10) . $file ['name'] ."\n";
+        }
+
+        $stats ['skipped'] = sizeof ($skip);
+        $stats ['uploaded'] = sizeof ($upload);
+        $stats ['bytes_uploaded'] = BackupVolume::bytes ($upload);
+
+        if (!sizeof ($upload))
+            echo "INFO > Nothing to upload: the bucket already has every backup of the volume. \n";
+        else
+        {
+            echo "INFO > ". ($dryRun ? 'Would upload' : 'Uploading') ." ". sizeof ($upload) ." file(s) (". static::humanSize ($stats ['bytes_uploaded']) ."): \n";
+
+            foreach ($upload as $file)
+                echo "  ". str_pad (static::humanSize ($file ['size']), 10) . $file ['name'] ."\n";
+        }
+
+        if ($dryRun)
+            $after = array_merge ($remote, $upload);
+        else
+        {
+            Cloud::upload ($volume, $dir, array_column ($upload, 'name'));
+
+            // a retenção vale sobre o que REALMENTE está no bucket agora
+            list ($after, $trash) = BackupVolume::split (Cloud::files ($dir), $namespace);
+
+            $present = array_column ($after, NULL, 'name');
+
+            foreach ($upload as $file)
+                if (!array_key_exists ($file ['name'], $present) || intval ($present [$file ['name']]['size']) !== intval ($file ['size']))
+                    throw new Exception ("File '". $file ['name'] ."' is missing (or has a different size) in the bucket after the upload. Nothing was deleted from the bucket");
+        }
+
+        $plan = Retention::plan ($after, $policy);
+
+        $sizes = array_column ($after, 'size', 'name');
+
+        if (sizeof ($plan ['ignore']))
+        {
+            echo "WARNING > ". sizeof ($plan ['ignore']) ." file(s) without a date in the name in the bucket (they will never be deleted from it): \n";
+
+            foreach ($plan ['ignore'] as $name)
+                echo "  ". $name ."\n";
+        }
+
+        echo "INFO > Keeping ". sizeof ($plan ['keep']) ." of ". (sizeof ($after) - sizeof ($plan ['ignore'])) ." backup file(s) in the bucket [D = daily, W = weekly, M = monthly, Y = yearly]: \n";
+
+        foreach ($plan ['keep'] as $name => $tags)
+            echo "  ". str_pad ($tags, 4) . str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
+
+        $deleted = 0;
+
+        foreach ($plan ['delete'] as $name) $deleted += intval ($sizes [$name] ?? 0);
+
+        $stats ['kept'] = sizeof ($plan ['keep']) + sizeof ($plan ['ignore']);
+        $stats ['deleted'] = sizeof ($plan ['delete']);
+        $stats ['bytes_deleted'] = $deleted;
+        $stats ['files_after'] = sizeof ($after) - sizeof ($plan ['delete']);
+        $stats ['bytes_after'] = BackupVolume::bytes ($after) - $deleted;
+
+        $plan ['upload'] = array_column ($upload, 'name');
+        $plan ['stats'] = $stats;
+
+        if (!sizeof ($plan ['delete']))
+        {
+            echo "INFO > Nothing to delete from the bucket. \n";
+
+            return $plan;
+        }
+
+        echo "INFO > ". ($dryRun ? 'Would delete' : 'Deleting') ." ". sizeof ($plan ['delete']) ." file(s) from the bucket (". static::humanSize ($deleted) ."): \n";
+
+        foreach ($plan ['delete'] as $name)
+            echo "  ". str_pad (static::humanSize ($sizes [$name] ?? 0), 10) . $name ."\n";
+
+        if (!$dryRun) Cloud::delete ($dir, $plan ['delete']);
+
+        return $plan;
+    }
+
+    // Do mais recente ao mais antigo, pela data do nome (ou de modificação, se não houver).
+    protected static function newestFirst (array $files)
+    {
+        $files = array_values ($files);
+
+        usort ($files, function ($a, $b) {
+            $ta = Retention::timestampFromName ($a ['name']) ?? intval ($a ['mtime']);
+            $tb = Retention::timestampFromName ($b ['name']) ?? intval ($b ['mtime']);
+
+            return $tb <=> $ta ?: strcmp ($b ['name'], $a ['name']);
+        });
+
+        return $files;
+    }
+
+    /**
+     * `io cloud --list`: o que há no bucket para a build, com a marca que a
+     * próxima rotação daria a cada arquivo (D/W/M/Y, '-' = sai, '?' = sem data).
+     * Só lê o bucket: não precisa do volume nem da versão implantada.
+     */
+    public static function cloudList ($namespace, $dir, $policy)
+    {
+        echo "INFO > Bucket: '". Cloud::url ($dir) ."' at '". Cloud::value ('S3_ENDPOINT') ."' \n";
+
+        list ($remote, $others) = BackupVolume::split (Cloud::files ($dir), $namespace);
+
+        if (sizeof ($others))
+            echo "INFO > Ignoring ". sizeof ($others) ." file(s) whose name does not start with '". $namespace ."_'. \n";
+
+        if (!sizeof ($remote))
+        {
+            echo "INFO > No backup files of this build in the bucket. \n";
+
+            return [ 'files' => 0, 'bytes' => 0 ];
+        }
+
+        $plan = Retention::plan ($remote, $policy);
+
+        $remote = static::newestFirst ($remote);
+
+        echo "INFO > ". sizeof ($remote) ." file(s), ". static::humanSize (BackupVolume::bytes ($remote)) ." [D/W/M/Y = kept by the next rotation, - = deleted by it, ? = no date in the name, never deleted]: \n";
+
+        foreach ($remote as $file)
+        {
+            $tag = $plan ['keep'][$file ['name']] ?? (in_array ($file ['name'], $plan ['ignore']) ? '?' : '-');
+
+            echo "  ". str_pad ($tag, 4) . str_pad (static::humanSize ($file ['size']), 10) . str_pad ($file ['mtime'] ? date ('Y-m-d H:i', $file ['mtime']) : '?', 18) . $file ['name'] ."\n";
+        }
+
+        return [ 'files' => sizeof ($remote), 'bytes' => BackupVolume::bytes ($remote) ];
+    }
+
+    /**
+     * `io cloud --verify`: confere por hash (MD5) os arquivos da build que existem
+     * no volume E no bucket (Cloud::verify). Arquivos só de um lado são listados,
+     * não são erro (a retenção do bucket pode guardar mais ou menos que a do
+     * volume). Lança exceção se algum arquivo difere ou não pôde ser conferido.
+     *
+     * @return array ['verified' => int, 'differ' => [names], 'only_volume' => int, 'only_bucket' => int]
+     */
+    public static function cloudVerify ($path, $namespace, $dir)
+    {
+        $volume = static::backupVolume ($path, $namespace);
+
+        echo "INFO > Backup volume: '". $volume ."' \n";
+
+        list ($local, $trash) = BackupVolume::split (BackupVolume::files ($volume), $namespace);
+
+        echo "INFO > Bucket: '". Cloud::url ($dir) ."' at '". Cloud::value ('S3_ENDPOINT') ."' \n";
+
+        list ($remote, $trash) = BackupVolume::split (Cloud::files ($dir), $namespace);
+
+        $inBucket = array_column ($remote, NULL, 'name');
+
+        $both = [];
+        $onlyVolume = [];
+
+        foreach (static::newestFirst ($local) as $file)
+            if (array_key_exists ($file ['name'], $inBucket)) $both [] = $file; else $onlyVolume [] = $file;
+
+        $onlyBucket = sizeof ($remote) - sizeof ($both);
+
+        echo "INFO > Files of this build: ". sizeof ($local) ." in the volume, ". sizeof ($remote) ." in the bucket, ". sizeof ($both) ." in both (". sizeof ($onlyVolume) ." only in the volume, ". $onlyBucket ." only in the bucket). \n";
+
+        $stats = [ 'verified' => 0, 'differ' => [], 'only_volume' => sizeof ($onlyVolume), 'only_bucket' => $onlyBucket ];
+
+        if (!sizeof ($both))
+        {
+            echo "WARNING > Nothing to verify: no file of this build is in both the volume and the bucket. \n";
+
+            return $stats;
+        }
+
+        echo "INFO > Verifying ". sizeof ($both) ." file(s) by hash (MD5), volume against bucket... \n";
+
+        $result = Cloud::verify ($volume, $dir, array_column ($both, 'name'));
+
+        $labels = [ '=' => 'OK', '*' => 'DIFFER', '-' => 'MISSING', '!' => 'ERROR', '+' => 'ONLY REMOTE' ];
+
+        foreach ($both as $file)
+        {
+            $mark = $result ['status'][$file ['name']] ?? '!';
+
+            if ($mark === '=') $stats ['verified']++; else $stats ['differ'][] = $file ['name'];
+
+            echo "  ". str_pad ($labels [$mark] ?? $mark, 8) . str_pad (static::humanSize ($file ['size']), 10) . $file ['name'] ."\n";
+        }
+
+        foreach ($result ['notes'] as $line)
+            echo "  ". $line ."\n";
+
+        if (sizeof ($stats ['differ']))
+            throw new Exception (sizeof ($stats ['differ']) ." of ". sizeof ($both) ." file(s) differ between the volume and the bucket (or could not be verified): ". implode (', ', array_slice ($stats ['differ'], 0, 5)) . (sizeof ($stats ['differ']) > 5 ? ', ...' : ''));
+
+        return $stats;
     }
 
     /**
@@ -267,7 +529,7 @@ abstract class Orchestrator
 
             chdir ($path);
 
-            exec ('env $(cat .env.sh) '. static::DOCKER_COMPOSE .' config 2> /dev/null', $output, $return);
+            exec (self::env ('.env.sh') .' '. static::DOCKER_COMPOSE .' config 2> /dev/null', $output, $return);
 
             chdir ($cwd);
 
@@ -335,57 +597,6 @@ abstract class Orchestrator
         while ($value >= 1024 && $i < sizeof ($units) - 1) { $value /= 1024; $i++; }
 
         return number_format ($value, $i ? 1 : 0, ',', '.') .' '. $units [$i];
-    }
-
-    /**
-     * Lista os arquivos regulares na raiz do volume: [['name' => string, 'mtime' => int, 'size' => int], ...]
-     */
-    protected static function listBackupFiles ($volume)
-    {
-        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup:ro '. static::CLEANER_IMAGE .' find /backup -maxdepth 1 -type f -exec stat -c "%Y|%s|%n" {} +';
-
-        echo 'COMMAND > '. $cmd ."\n";
-
-        exec ($cmd .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-        {
-            echo implode ("\n", $output) ."\n";
-
-            throw new Exception ("Unable to list the files of volume '". $volume ."'");
-        }
-
-        $files = [];
-
-        foreach ($output as $line)
-        {
-            if (!preg_match ('/^(\d+)\|(\d+)\|\/backup\/(.+)$/', trim ($line), $m)) continue;
-
-            $files [] = [ 'name' => $m [3], 'mtime' => intval ($m [1]), 'size' => intval ($m [2]) ];
-        }
-
-        return $files;
-    }
-
-    protected static function deleteBackupFiles ($volume, array $names)
-    {
-        $args = [];
-
-        foreach ($names as $name)
-            $args [] = escapeshellarg ('/backup/'. $name);
-
-        $cmd = static::DOCKER .' run --rm -v '. escapeshellarg ($volume) .':/backup '. static::CLEANER_IMAGE .' rm -f -- '. implode (' ', $args);
-
-        echo 'COMMAND > '. $cmd ."\n";
-
-        exec ($cmd .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-        {
-            echo implode ("\n", $output) ."\n";
-
-            throw new Exception ("Unable to delete the files of volume '". $volume ."'");
-        }
     }
 
     public static function checkSSHConnection ($host, $timeout = 30)

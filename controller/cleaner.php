@@ -8,6 +8,25 @@ echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to CLEAN (r
 
 if ($_dryRun) echo "INFO > Dry run: nothing will be deleted. \n";
 
+// Quantos backups guardar: RETENTION do /data/.env ('D/W/M/Y', padrão 7/4/3/1).
+// Valor malformado aborta antes de tocar em qualquer arquivo; no daemon, avisa
+// por e-mail se alguma build tem a rotação ligada (senão ela pararia calada).
+try
+{
+	$_counts = Retention::parse (getenv ('RETENTION'));
+}
+catch (Exception $e)
+{
+	echo "ERROR > ". $e->getMessage () .". Fix RETENTION in the '.env' file. Nothing was deleted! \n";
+
+	$enabled = array_filter ($_builds, function ($b) { return Retention::policy (isset ($b->auto) && isset ($b->auto->cleaner) ? $b->auto->cleaner : FALSE) !== FALSE; });
+
+	if ($_daemon && sizeof ($enabled))
+		Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - INVALID RETENTION', mailBody ());
+
+	return;
+}
+
 $_summary = [];
 
 $orchestrator = getenv ('ORCHESTRATOR');
@@ -16,14 +35,14 @@ foreach ($_builds as $_build => $_b)
 {
 	// 'auto.cleaner': false/ausente (desligado), true ou "undated" — ver Retention::policy().
 	// Em modo daemon só roda quando ligado. Em execução manual roda sempre, com a
-	// política do builds.json (se houver) ou a padrão.
+	// política do builds.json (se houver) ou a padrão — ambas com as contagens de RETENTION.
 	$auto = isset ($_b->auto) && isset ($_b->auto->cleaner) ? $_b->auto->cleaner : FALSE;
 
-	$policy = Retention::policy ($auto);
+	$policy = Retention::policy ($auto, $_counts);
 
 	if ($_daemon && $policy === FALSE) continue;
 
-	if ($policy === FALSE) $policy = Retention::DEFAULT_POLICY;
+	if ($policy === FALSE) $policy = Retention::policy (TRUE, $_counts);
 
 	echo "\n";
 
@@ -65,7 +84,7 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
-	echo "INFO > Rotating backups (keep last ". $policy ['daily'] ." daily, ". $policy ['weekly'] ." weekly and ". $policy ['monthly'] ." monthly)... \n";
+	echo "INFO > Rotating backups (keep last ". Retention::describe ($policy) .")... \n";
 
 	try
 	{

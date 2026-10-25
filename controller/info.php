@@ -32,6 +32,18 @@ foreach ($_builds as $_build => $_b)
 		echo "Report of ". $signal .": ". ($report [$signal]['status'] === 200 ? 'accepted' : 'REFUSED ('. $report [$signal]['status'] .': '. $report [$signal]['reason'] .')') ." at ". $report [$signal]['at'] ." \n";
 	}
 
+	// última cópia em nuvem (io cloud / cloud:daemon), de /data/.cloud/<p>_<a>_<s>.json
+	$cloud = Cloud::last ($_b->project, $_b->app, $_b->stage);
+
+	$autoCloud = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;
+
+	if (!isset ($cloud ['status']))
+		echo "Cloud copy (S3): ". (Retention::policy ($autoCloud) === FALSE ? 'disabled (auto.cloud = false)' : (Cloud::configured () ? 'never run' : 'bucket not configured (S3_* in .env)')) ." \n";
+	elseif ($cloud ['status'] === 'ok')
+		echo "Cloud copy (S3): ok at ". $cloud ['at'] ." (". intval ($cloud ['uploaded'] ?? 0) ." uploaded, ". Orchestrator::humanSize ($cloud ['bytes_uploaded'] ?? 0) ."; ". intval ($cloud ['deleted'] ?? 0) ." deleted; ". intval ($cloud ['files_after'] ?? 0) ." file(s), ". Orchestrator::humanSize ($cloud ['bytes_after'] ?? 0) ." in the bucket) \n";
+	else
+		echo "Cloud copy (S3): FAILED at ". $cloud ['at'] .": ". (string) ($cloud ['error'] ?? '?') ." (last success: ". ($cloud ['success_at'] ?? 'never') .") \n";
+
 	$version = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app]) . DIRECTORY_SEPARATOR .'.version'. DIRECTORY_SEPARATOR . $_b->stage;
 
 	try

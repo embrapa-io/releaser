@@ -364,7 +364,24 @@ catch (Exception $e)
 
 if ($argc < 2 + $_operations [$_operation]->params || ($argc > 2 && trim ($argv [2]) == '--help'))
 {
-	echo Menu::help ($_operation, $_operations [$_operation], $container, $_daemon);
+	// Lista as builds deste servidor no `--help` dos comandos que as recebem. Falha na leitura (sem /data, JSON
+	// inválido) só omite a linha: a ajuda nunca pode deixar de aparecer.
+	$builds = NULL;
+
+	if (strpos ($_operations [$_operation]->usage, 'BUILD-1') !== FALSE)
+		try
+		{
+			require_once 'vendor/autoload.php';
+			require_once 'class/Controller.php';
+
+			$builds = array_keys (Controller::loadBuilds (DIRECTORY_SEPARATOR .'data'));
+		}
+		catch (\Throwable $e)
+		{
+			$builds = NULL;
+		}
+
+	echo Menu::help ($_operation, $_operations [$_operation], $container, $_daemon, $builds);
 
 	exit;
 }

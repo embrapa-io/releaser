@@ -336,6 +336,28 @@ class DockerCompose extends Orchestrator
 
         if (!$upgrade)
         {
+            // O `docker compose restart` só age sobre containers que existem: depois de um `io stop --down` (ou de um
+            // `docker rm` manual), ele sai com 0 sem subir nada e o Releaser relatava SUCCESS com a app fora do ar.
+            // Se algum serviço da aplicação está sem container, ele é criado antes (`up -d --no-recreate`, que não
+            // toca nos containers existentes nem renova imagens) e o restart segue como sempre.
+            $missing = self::servicesWithoutContainer ();
+
+            if (sizeof ($missing))
+            {
+                echo "WARNING > Service(s) without container: ". implode (', ', $missing) ." (removed by 'io stop --down'?). Creating them... \n";
+
+                echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --no-recreate --quiet-pull'."\n";
+
+                exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --no-recreate --quiet-pull 2>&1', $output, $return);
+
+                if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+                if ($return !== 0)
+                    throw new Exception ('Error when trying to create the missing containers with Docker Compose');
+
+                unset ($output, $return);
+            }
+
             echo "INFO > Restarting application with Docker Compose... \n";
 
             echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' restart'."\n";
@@ -366,6 +388,29 @@ class DockerCompose extends Orchestrator
 
         if ($return !== 0)
             throw new Exception ('Error when trying to start containers with Docker Compose');
+    }
+
+    /**
+     * Serviços da aplicação (os do `.env.io`, ou seja, sem os CLI_SERVICES do perfil `cli`) que não têm container,
+     * nem parado. Deve ser chamado com o diretório da build como atual (depois do `chdir`).
+     */
+    static private function servicesWithoutContainer ()
+    {
+        exec (self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);
+
+        if ($return !== 0)
+            throw new Exception ("Unable to get the services in 'docker-compose.yaml'");
+
+        unset ($return);
+
+        exec (self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' ps --all --services 2>/dev/null', $existing, $return);
+
+        if ($return !== 0)
+            throw new Exception ('Unable to list the containers of the build with Docker Compose');
+
+        $services = array_diff (array_filter (array_map ('trim', $services)), self::CLI_SERVICES);
+
+        return array_values (array_diff ($services, array_map ('trim', $existing)));
     }
 
     /**

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . DIRECTORY_SEPARATOR .'S3Probe.php';
+
 /**
  * Cópia dos backups em nuvem: um bucket S3 compatível (AWS S3, Cloudflare R2,
  * Backblaze B2, MinIO...), configurado uma única vez no /data/.env:
@@ -249,10 +251,11 @@ class Cloud
     }
 
     /**
-     * Teste do acesso ao bucket para o `io check` (`rclone lsd`, 5 s). NULL quando
-     * nenhuma variável S3_* foi definida (cópia em nuvem não usada). Nunca lança.
+     * Teste do acesso ao bucket para o `io check`: listar (`rclone lsd`, 5 s) e
+     * gravar (S3Probe, no diretório de uma build de $data). NULL quando nenhuma
+     * variável S3_* foi definida (cópia em nuvem não usada). Nunca lança.
      */
-    static public function check ()
+    static public function check ($data = '/data')
     {
         if (!self::touched ()) return NULL;
 
@@ -277,9 +280,17 @@ class Cloud
         }
 
         if ($result ['code'] === 0)
+        {
+            // listar não prova que a chave grava: abre e aborta um upload multipart (S3Probe), sem deixar nada no bucket
+            $probe = S3Probe::run (self::value ('S3_ENDPOINT'), $bucket, self::value ('S3_ACCESS_KEY'), self::value ('S3_SECRET_KEY'), self::value ('S3_REGION'), S3Probe::prefix ($data));
+
+            if (!$probe ['ok'])
+                return self::result ('ERROR', 'listing ok, but '. $probe ['message'], [ 'alert' => TRUE ]);
+
             return $ms >= self::SLOW
-                ? self::result ('WARNING', 'slow: '. $ms .' ms (bucket '. $bucket .')', [ 'ms' => $ms ])
-                : self::result ('OK', 'ok (bucket '. $bucket .', '. $ms .' ms)', [ 'ms' => $ms ]);
+                ? self::result ('WARNING', 'slow: '. $ms .' ms (bucket '. $bucket .', listing and writing ok)', [ 'ms' => $ms ])
+                : self::result ('OK', 'ok (bucket '. $bucket .', listing and writing, '. $ms .' ms)', [ 'ms' => $ms ]);
+        }
 
         // timeout: 124 (GNU), 143 (BusyBox, pelo shell) ou 15 (SIGTERM, quando o proc_close vê o sinal)
         if (in_array ($result ['code'], [ 124, 143, 15 ]))

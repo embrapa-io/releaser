@@ -35,7 +35,7 @@ class GitCheck
             'api' => $api,
             'token' => $api ['token'],
             'clone' => self::cloneAccess ($data),
-            'cloud' => $cloud ? Cloud::check () : NULL
+            'cloud' => $cloud ? Cloud::check ($data) : NULL
         ];
     }
 

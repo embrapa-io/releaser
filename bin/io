@@ -142,9 +142,9 @@ ask_yes_no() {
   done
 }
 
-# Testa o acesso ao bucket com as respostas (rclone lsd, 5 s), como o `io check`.
+# Testa o acesso ao bucket com as respostas (rclone lsd, 5 s, e gravação pelo S3Probe), como o `io check`.
 # Credenciais só no ambiente do processo (nada na linha de comando). Imprime OK ou
-# o motivo, sem a chave nem o segredo; devolve o código do rclone.
+# o motivo, sem a chave nem o segredo; devolve o código do rclone (ou 1, se a gravação falhar).
 s3_test() {
   local out code
 
@@ -155,7 +155,18 @@ s3_test() {
   code=$?
 
   if [ $code -eq 0 ]; then
-    echo "${B}${G}OK${N} (bucket '$s3_bucket' listed)"
+    # listar não prova que a chave grava: abre e aborta um upload multipart (class/S3Probe.php), sem deixar nada no bucket
+    out=$(S3_ENDPOINT="$s3_endpoint" S3_BUCKET="$s3_bucket" S3_ACCESS_KEY="$s3_access" S3_SECRET_KEY="$s3_secret" \
+      S3_REGION="$s3_region" php /app/class/S3Probe.php /data 2>&1)
+    code=$?
+
+    if [ $code -eq 0 ]; then
+      echo "${B}${G}OK${N} (bucket '$s3_bucket' listed; $out)"
+    else
+      out=${out//"$s3_secret"/***}
+      out=${out//"$s3_access"/***}
+      echo "${R}error${N}: bucket '$s3_bucket' listed, but $out"
+    fi
   elif [ $code -eq 124 ] || [ $code -eq 143 ]; then
     echo "${R}error${N}: no answer from the endpoint in 5 s (timeout; blocked?)"
   elif [ $code -eq 3 ]; then

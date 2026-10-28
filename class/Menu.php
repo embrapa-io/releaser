@@ -146,14 +146,28 @@ class Menu
         return $out;
     }
 
+    /** Lista em inglês: "a", "a and b", "a, b and c"; vazia orienta para o `io install`. */
+    public static function enumerate (array $items)
+    {
+        if (!sizeof ($items)) return "none (see 'io install')";
+
+        $last = array_pop ($items);
+
+        return sizeof ($items) ? implode (', ', $items) .' and '. $last : $last;
+    }
+
     /** `io COMMAND --help` (ou chamada sem os parâmetros obrigatórios). */
-    public static function help ($op, $obj, $container, $daemon = FALSE)
+    public static function help ($op, $obj, $container, $daemon = FALSE, $builds = NULL)
     {
         $plain = self::plain ($daemon);
 
         $width = self::width ();
 
         $out = self::paint ('Usage:', 'bold', $plain) .' '. self::wrap ('docker exec -it '. $container .' io '. $op .' '. $obj->usage, $width, 7) ."\n\n";
+
+        // Builds deste servidor, só nos comandos que as recebem (NULL = não se aplica ou não foi possível ler)
+        if (is_array ($builds) && strpos ($obj->usage, 'BUILD-1') !== FALSE)
+            $out .= self::paint ('Available builds:', 'bold', $plain) .' '. self::wrap (self::enumerate ($builds), $width, 18) ."\n\n";
 
         $out .= self::wrap ($obj->detail !== '' ? $obj->detail : $obj->info, $width, 0) ."\n";
 

@@ -54,7 +54,7 @@ Depois de configurar, teste com `io check` (ver "Testando o acesso ao GitLab e a
 
 #### Pelo assistente (`io` na primeira execução ou `io cloud --setup`)
 
-Não é preciso editar o `.env` à mão. Na **primeira execução** do Releaser, o assistente que cria o `.env` pergunta, depois do SMTP, a retenção local (`Backup retention on this server (daily/weekly/monthly/yearly) [7/4/3/1]`) e se os _backups_ devem ser copiados para um _bucket_ S3 (`Do you want to copy the backups to an S3 bucket in the cloud, owned by you? (y/N)`). Respondendo sim, pede o _endpoint_, o _bucket_, a chave, o segredo (sem eco), a região (padrão `auto`, ou a região lida do _endpoint_ da AWS e do B2) e a retenção no _bucket_ (padrão: a local), **testa o acesso** (`rclone lsd`, 5 segundos) e mostra `OK` ou o motivo da falha, deixando corrigir ou seguir assim mesmo. Só as variáveis respondidas vão para o `.env` (nenhuma `S3_*` fica vazia quando a resposta é não), e a tela de confirmação mostra os segredos mascarados.
+Não é preciso editar o `.env` à mão. Na **primeira execução** do Releaser, o assistente que cria o `.env` pergunta, depois do SMTP, a retenção local (`Backup retention on this server (daily/weekly/monthly/yearly) [7/4/3/1]`) e se os _backups_ devem ser copiados para um _bucket_ S3 (`Do you want to copy the backups to an S3 bucket in the cloud, owned by you? (y/N)`). Respondendo sim, pede o _endpoint_, o _bucket_, a chave, o segredo (sem eco), a região (padrão `auto`, ou a região lida do _endpoint_ da AWS e do B2) e a retenção no _bucket_ (padrão: a local), **testa o acesso** (listagem com `rclone lsd`, 5 segundos, e gravação, desde a `1.26.10-15`) e mostra `OK` ou o motivo da falha, deixando corrigir ou seguir assim mesmo. Só as variáveis respondidas vão para o `.env` (nenhuma `S3_*` fica vazia quando a resposta é não), e a tela de confirmação mostra os segredos mascarados.
 
 Numa **instalação existente**, o mesmo bloco de perguntas roda com:
 
@@ -280,16 +280,16 @@ Nota para a seção (ou para "Rotação de _backups_"): o `cleaner` e o `cloud` 
 
 Acrescentar:
 
-> Quando alguma variável `S3_*` está no `.env`, o `io check` também testa a listagem do _bucket_ (com _timeout_ de 5 segundos) e a inclui na linha de resumo:
+> Quando alguma variável `S3_*` está no `.env`, o `io check` também testa o _bucket_ e inclui o resultado na linha de resumo. São dois testes: a listagem (com _timeout_ de 5 segundos) e, desde a `1.26.10-15`, a **gravação**, sem deixar nada no _bucket_. O Releaser abre um _upload_ _multipart_ no diretório de uma das _builds_ do servidor (de preferência uma com `auto.cloud` ligado) e o cancela em seguida. Um _upload_ cancelado não vira objeto nem versão, nem fica retido pelo _Object Lock_. A chave precisa, portanto, das permissões `s3:PutObject` e `s3:AbortMultipartUpload`, que o envio também usa.
 >
 > ```
 > INFO > S3 bucket 'releaser-backups' at https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com (S3_ENDPOINT)...
-> SUCCESS > S3: ok (bucket releaser-backups, 184 ms)
+> SUCCESS > S3: ok (bucket releaser-backups, listing and writing, 184 ms)
 >
-> Success! API ok (95 ms) | Token ok, expires on 2027-03-01, in 129 days | SSH: ok as @releaser (310 ms) | S3 ok (bucket releaser-backups, 184 ms)
+> Success! API ok (95 ms) | Token ok, expires on 2027-03-01, in 129 days | SSH: ok as @releaser (310 ms) | S3 ok (bucket releaser-backups, listing and writing, 184 ms)
 > ```
 >
-> Configuração incompleta, _bucket_ inexistente, chave recusada ou provedor inacessível aparecem como `ERROR`. O _daemon_ diário do `check` envia e-mail ao `LOG_MAIL` quando o acesso ao _bucket_ falha (no máximo um por dia), como já faz para o _clone_ recusado. O teste do _bucket_ não entra na linha de resumo do menu do `io` (sem comando), que continua testando só o GitLab.
+> Configuração incompleta, _bucket_ inexistente, chave recusada, chave sem permissão de gravar (`listing ok, but writing denied…`) ou provedor inacessível aparecem como `ERROR`. O _daemon_ diário do `check` envia e-mail ao `LOG_MAIL` quando o acesso ao _bucket_ falha (no máximo um por dia), como já faz para o _clone_ recusado. O teste do _bucket_ não entra na linha de resumo do menu do `io` (sem comando), que continua testando só o GitLab.
 
 ### `io info`
 

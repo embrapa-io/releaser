@@ -79,7 +79,12 @@ catch (Exception $e)
 {
 	echo "ERROR > ". $e->getMessage () ."! \n";
 
-	if ($e->getCode () !== 3)
+	if ($e->getCode () !== 3 && Cli::snap ($e->getMessage ()))
+	{
+		echo "INFO > On this server, Docker appears to be installed by Snap, whose confinement does not let the helper container write on the host. In this case, to install the 'io' command, run on the server: \n";
+		echo "       ". Cli::MANUAL ." \n";
+	}
+	elseif ($e->getCode () !== 3)
 	{
 		echo "INFO > Docker installed via snap (AppArmor), rootless Docker or a read-only '". Cli::TARGET ."' can prevent the helper container from writing on the host. Install the script by hand, from the server: \n";
 		echo "       ". Cli::MANUAL ." \n";

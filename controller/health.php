@@ -52,7 +52,10 @@ foreach ($_builds as $_build => $_b)
 			'healthy' => $c ['healthy'],
 			'size' => $c ['size'],
 			'created' => $c ['created'],
-			'running' => $c ['running']
+			'running' => $c ['running'],
+			// Referência da imagem ("postgres:18-alpine"): o core grava em :image, como faz o automaton-trivy
+			// nos clusters, e o alerta de CVE classifica a imagem para escolher a ação.
+			'image' => $c ['reference']
 		];
 
 	if (!$_daemon)

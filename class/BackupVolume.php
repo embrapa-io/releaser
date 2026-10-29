@@ -164,6 +164,77 @@ class BackupVolume
         }
     }
 
+    /** Espaço livre, em bytes, no disco do volume (df do auxiliar). */
+    static public function free ($volume)
+    {
+        $cmd = self::docker ($volume) .' df -Pk '. self::MOUNT;
+
+        exec ($cmd .' 2>&1', $output, $return);
+
+        // Filesystem 1024-blocks Used Available Capacity Mounted-on
+        $fields = preg_split ('/\s+/', trim ((string) end ($output)));
+
+        if ($return !== 0 || sizeof ($fields) < 6 || !ctype_digit ($fields [3]))
+            throw new Exception ("Unable to check the free space of volume '". $volume ."'");
+
+        return intval ($fields [3]) * 1024;
+    }
+
+    /** Renomeia um arquivo na raiz do volume, sem sobrescrever (mv -n e conferência). */
+    static public function rename ($volume, $from, $to)
+    {
+        $cmd = self::docker ($volume, TRUE) .' sh -c '. escapeshellarg ('test ! -e "$2" && mv -n "$1" "$2" && test -f "$2"') .' rename '. escapeshellarg (self::MOUNT .'/'. $from) .' '. escapeshellarg (self::MOUNT .'/'. $to);
+
+        echo 'COMMAND > '. $cmd ."\n";
+
+        exec ($cmd .' 2>&1', $output, $return);
+
+        if ($return !== 0)
+        {
+            echo implode ("\n", $output) ."\n";
+
+            throw new Exception ("Unable to rename '". $from ."' to '". $to ."' in volume '". $volume ."'");
+        }
+    }
+
+    /**
+     * SHA-256 e leitura do tar.gz numa passada só (o arquivo pode ter vários GB):
+     * o tee entrega o fluxo ao sha256sum e, por um FIFO, ao `tar -tz`, que também
+     * acusa gzip truncado ou corrompido. O FIFO é criado ANTES de o tar ir para o
+     * fundo (senão o tee podia criar um arquivo comum com o mesmo nome).
+     *
+     * @return array ['sha256' => string, 'tar' => bool, 'error' => string]
+     */
+    static public function inspect ($volume, $name)
+    {
+        $script = 'mkfifo /tmp/tar.fifo || exit 1; (tar -tzf /tmp/tar.fifo > /dev/null 2> /tmp/tar.err; echo $? > /tmp/tar.rc) & '
+            .'tee /tmp/tar.fifo < "$1" | sha256sum | cut -d " " -f 1; wait; echo "TAR:$(cat /tmp/tar.rc)"; tail -n 2 /tmp/tar.err';
+
+        $cmd = self::docker ($volume) .' sh -c '. escapeshellarg ($script) .' inspect '. escapeshellarg (self::MOUNT .'/'. $name);
+
+        echo 'COMMAND > '. $cmd ."\n";
+
+        exec ($cmd .' 2>&1', $output, $return);
+
+        $sha = trim ((string) ($output [0] ?? ''));
+
+        $rc = NULL;
+
+        foreach ($output as $line)
+            if (preg_match ('/^TAR:(\d+)$/', trim ($line), $m)) $rc = intval ($m [1]);
+
+        if (!preg_match ('/^[0-9a-f]{64}$/', $sha) || $rc === NULL)
+        {
+            echo implode ("\n", $output) ."\n";
+
+            throw new Exception ("Unable to read '". $name ."' in volume '". $volume ."'");
+        }
+
+        $error = implode (' ', array_slice (array_values (array_filter ($output, function ($l) use ($sha) { return trim ($l) !== $sha && !preg_match ('/^TAR:\d+$/', trim ($l)); })), -2));
+
+        return [ 'sha256' => $sha, 'tar' => $rc === 0, 'error' => trim ($error) ];
+    }
+
     /**
      * Separa os arquivos DESTA build ('{project}_{app}_{stage}_...') dos demais:
      * o mesmo volume/diretório pode ser compartilhado por várias builds (dica das

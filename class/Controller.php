@@ -237,6 +237,83 @@ class Controller
         require self::PATH .'cloud.php';
     }
 
+    /**
+     * `io restore <build> [--list] [--file NOME] [--from local|s3] [--sha256 HASH] [--check] [--yes]
+     * [--accept-cross-stage] [--accept-upload]`: uma build por vez (ver controller/restore.php).
+     */
+    static public function restore ($slice, ...$args)
+    {
+        global $_daemon, $_data;
+
+        $slice = trim ((string) $slice);
+
+        if ($slice === '--all' || strpos ($slice, ',') !== FALSE)
+            throw new Exception ("'restore' works on one build at a time (e.g., 'io restore my-project/api@release')");
+
+        $_opts = [ 'list' => FALSE, 'file' => NULL, 'from' => NULL, 'sha256' => NULL, 'check' => FALSE, 'yes' => FALSE, 'cross' => FALSE, 'upload' => FALSE ];
+
+        for ($i = 0; $i < sizeof ($args); $i++)
+        {
+            $arg = trim ((string) $args [$i]);
+
+            $value = function ($name) use ($args, &$i, $arg)
+            {
+                if (strpos ($arg, $name .'=') === 0) return trim (substr ($arg, strlen ($name) + 1));
+
+                if (!isset ($args [$i + 1])) throw new Exception ("Missing value for '". $name ."'");
+
+                return trim ((string) $args [++$i]);
+            };
+
+            if ($arg === '--list') $_opts ['list'] = TRUE;
+            elseif ($arg === '--check') $_opts ['check'] = TRUE;
+            elseif ($arg === '--yes') $_opts ['yes'] = TRUE;
+            elseif ($arg === '--accept-cross-stage') $_opts ['cross'] = TRUE;
+            elseif ($arg === '--accept-upload') $_opts ['upload'] = TRUE;
+            elseif ($arg === '--file' || strpos ($arg, '--file=') === 0) $_opts ['file'] = $value ('--file');
+            elseif ($arg === '--from' || strpos ($arg, '--from=') === 0) $_opts ['from'] = $value ('--from');
+            elseif ($arg === '--sha256' || strpos ($arg, '--sha256=') === 0) $_opts ['sha256'] = strtolower ($value ('--sha256'));
+            else
+                throw new Exception ("Unknown parameter '". $arg ."'. See 'io restore --help'");
+        }
+
+        if ($_opts ['from'] !== NULL && !in_array ($_opts ['from'], [ 'local', 's3' ]))
+            throw new Exception ("Invalid '--from': use 'local' or 's3'");
+
+        if ($_opts ['sha256'] !== NULL && !preg_match ('/^[0-9a-f]{64}$/', $_opts ['sha256']))
+            throw new Exception ("Invalid '--sha256': 64 hexadecimal characters");
+
+        if ($_opts ['yes'] && $_opts ['file'] === NULL && !$_opts ['list'])
+            throw new Exception ("'--yes' requires '--file': without questions, the file must be chosen explicitly");
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        require self::PATH .'restore.php';
+    }
+
+    /**
+     * Há um `io restore` em andamento na build? (trava /data/.restore/<proj>_<app>_<stage>.lock com o PID).
+     * Trava de processo que já não existe é removida. Os comandos do daemon pulam a build enquanto houver.
+     */
+    static public function restoring ($b)
+    {
+        global $_data;
+
+        $lock = ($_data ? $_data : '/data') .'/.restore/'. $b->project .'_'. $b->app .'_'. $b->stage .'.lock';
+
+        if (!file_exists ($lock)) return FALSE;
+
+        $pid = intval (trim ((string) file_get_contents ($lock)));
+
+        if ($pid > 0 && file_exists ('/proc/'. $pid)) return TRUE;
+
+        echo "WARNING > Removing a stale restore lock of build '". $b->project .'/'. $b->app .'@'. $b->stage ."' (process ". $pid ." is gone). \n";
+
+        try { unlink ($lock); } catch (Exception $e) {}
+
+        return FALSE;
+    }
+
     static public function cli ($flag = NULL, $flag2 = NULL)
     {
         $_flags = [];

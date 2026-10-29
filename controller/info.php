@@ -61,6 +61,14 @@ foreach ($_builds as $_build => $_b)
 	else
 		echo "Cloud copy (S3): FAILED at ". $cloud ['at'] .": ". (string) ($cloud ['error'] ?? '?') ." (last success: ". ($cloud ['success_at'] ?? 'never') .") \n";
 
+	// último restore (io restore), de /data/.restore/<p>_<a>_<s>.json
+	$restoreFile = $_data . DIRECTORY_SEPARATOR .'.restore'. DIRECTORY_SEPARATOR . $_b->project .'_'. $_b->app .'_'. $_b->stage .'.json';
+
+	$restore = file_exists ($restoreFile) ? json_decode ((string) file_get_contents ($restoreFile), TRUE) : NULL;
+
+	if (is_array ($restore) && isset ($restore ['status']))
+		echo "Last restore: ". ($restore ['check'] ?? FALSE ? 'check only, ' : '') . ($restore ['status'] === 'DONE' ? 'ok' : ($restore ['status'] === 'RUNNING' ? 'RUNNING (step '. ($restore ['step'] ?? '?') .')' : 'FAILED at step '. ($restore ['step'] ?? '?'))) ." at ". ($restore ['finished'] ?? $restore ['started'] ?? '?') .", ". ($restore ['group'] ?? '?') ."/". ($restore ['file'] ?? '?') ." from the ". (($restore ['source'] ?? '') === 's3' ? 'bucket' : 'local volume') . (($restore ['status'] ?? '') === 'ERROR' ? ": ". ($restore ['message'] ?? '') : '') ." \n";
+
 	$version = $_apps . DIRECTORY_SEPARATOR . implode (DIRECTORY_SEPARATOR, [$_b->project, $_b->app]) . DIRECTORY_SEPARATOR .'.version'. DIRECTORY_SEPARATOR . $_b->stage;
 
 	try

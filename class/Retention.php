@@ -38,10 +38,21 @@
  *
  * Entre uma rotação e a próxima podem existir alguns arquivos a mais que o
  * total da política (novos backups gerados depois da última rotação).
+ *
+ * Backups feitos antes de um restore (`io restore`, Backup S3 da plataforma),
+ * com SHIELD_MARK no nome, ficam fora da política por SHIELD_DAYS dias a contar
+ * da data do nome: são mantidos com a marca R e não contam em nenhum nível.
+ * Depois disso, viram backups comuns. A mesma regra está no Doctor da
+ * plataforma (backend, automaton/doctor/controller/backup/s3.php).
  */
 class Retention
 {
     const DEFAULT_SPEC = '7/4/3/1';
+
+    // Marca do backup feito antes de um restore (ver shielded ()).
+    const SHIELD_MARK = '_before-restore_';
+
+    const SHIELD_DAYS = 30;
 
     const DEFAULT_POLICY = [
         'daily' => 7,
@@ -125,6 +136,19 @@ class Retention
     }
 
     /**
+     * Backup feito antes de um restore e ainda dentro dos SHIELD_DAYS dias (pela
+     * data do nome; sem data, nunca protegido): fica fora da rotação.
+     */
+    static public function shielded ($name, $now = NULL)
+    {
+        if (strpos ($name, self::SHIELD_MARK) === FALSE) return FALSE;
+
+        $ts = self::timestampFromName ($name);
+
+        return $ts !== NULL && $ts >= ($now === NULL ? time () : $now) - self::SHIELD_DAYS * 86400;
+    }
+
+    /**
      * Calcula o plano de rotação.
      *
      * @param array $files  Lista de ['name' => string, 'mtime' => int]. O instante
@@ -132,17 +156,21 @@ class Retention
      *                      não são backups reconhecidos: ficam em 'ignore' e
      *                      nunca são apagados (o mtime só serve para ordená-los).
      * @param array $policy ['daily' => int, 'weekly' => int, 'monthly' => int, 'yearly' => int]
-     * @return array ['keep' => [name => 'D/W/M/Y' (ou 'DY', 'WY', 'MY')], 'delete' => [name, ...], 'ignore' => [name, ...]]
+     * @param int|NULL $now Instante de referência da proteção do pré-restore (testes).
+     * @return array ['keep' => [name => 'D/W/M/Y' (ou 'DY', 'WY', 'MY'; 'R' = pré-restore protegido)], 'delete' => [name, ...], 'ignore' => [name, ...]]
      *               todos ordenados do mais recente para o mais antigo.
      */
-    static public function plan (array $files, array $policy)
+    static public function plan (array $files, array $policy, $now = NULL)
     {
         $items = [];
         $ignore = [];
+        $shield = [];
 
         foreach ($files as $file)
         {
             $name = $file ['name'];
+
+            if (self::shielded ($name, $now)) { $shield [] = [ 'name' => $name, 'ts' => self::timestampFromName ($name) ]; continue; }
 
             $ts = self::timestampFromName ($name);
 
@@ -217,6 +245,13 @@ class Retention
         foreach ($items as $item)
             if (!array_key_exists ($item ['name'], $keep))
                 $delete [] = $item ['name'];
+
+        // pré-restores protegidos: mantidos com a marca R, fora dos níveis
+        foreach ($shield as $item) $keep [$item ['name']] = 'R';
+
+        $items = array_merge ($items, $shield);
+
+        usort ($items, function ($a, $b) { return $b ['ts'] <=> $a ['ts'] ?: strcmp ($b ['name'], $a ['name']); });
 
         // preserva a ordem (mais recente primeiro) também em 'keep'
         $ordered = [];

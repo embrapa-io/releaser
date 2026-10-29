@@ -576,6 +576,12 @@ class DockerSwarm extends Orchestrator
         self::buildAndRunCliService ('backup', $path, $name);
     }
 
+    // Restore em Swarm: os serviços de CLI rodam como serviço avulso, com o volume do nó onde a tarefa cair (fase 2).
+    static public function restore ($path, $name, $file)
+    {
+        throw new SkipException ("Restore is not supported on Docker Swarm yet");
+    }
+
     static public function sanitize ($path, $name)
     {
         self::buildAndRunCliService ('sanitize', $path, $name);

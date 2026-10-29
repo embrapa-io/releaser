@@ -12,6 +12,13 @@ foreach ($_builds as $_build => $_b)
 
 	echo "=== ". $_build ." === \n\n";
 
+	if (self::restoring ($_b))
+	{
+		echo "WARNING > A restore is running on this build ('io restore'). Skipping. \n\n";
+
+		continue;
+	}
+
 	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 
 	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))

@@ -253,6 +253,35 @@ check ('sem data em "undated" (A = 2): o de 2025 vira o anual do ano', ($plan ['
 check ('sem data em "undated": o de hoje vira diário', ($plan ['keep'] ['teste_api_release_latest.tar.gz'] ?? '') === 'D');
 
 // ---------------------------------------------------------------------------
+// Backup feito antes de um restore ('_before-restore_'): fora da rotação por 30 dias
+
+$now = gmmktime (12, 0, 0, 10, 23, 2026);
+
+$withBefore = array_merge (daily ('2026-09-01', '2026-10-23'), [
+	[ 'name' => 'teste_api_release_1.0.0-1_before-restore_2026-10-20_14-00-00.tar.gz', 'mtime' => 0 ],
+	[ 'name' => 'teste_api_release_1.0.0-1_before-restore_2026-09-10_14-00-00.tar.gz', 'mtime' => 0 ],
+	[ 'name' => 'teste_api_release_before-restore_sem-data.tar.gz', 'mtime' => 0 ]
+]);
+
+$plan = Retention::plan ($withBefore, policy ('7/0/0/0'), $now);
+
+check ('pré-restore de 3 dias: mantido com a marca R', ($plan ['keep'] ['teste_api_release_1.0.0-1_before-restore_2026-10-20_14-00-00.tar.gz'] ?? '') === 'R', json_encode (array_slice ($plan ['keep'], 0, 9)));
+
+check ('pré-restore protegido não ocupa um diário: os 7 dias continuam', sizeof (array_filter ($plan ['keep'], function ($t) { return $t === 'D'; })) === 7);
+
+check ('pré-restore de 43 dias: volta à rotação e sai com 7/0/0/0', in_array ('teste_api_release_1.0.0-1_before-restore_2026-09-10_14-00-00.tar.gz', $plan ['delete']));
+
+check ('pré-restore sem data: ignorado como qualquer arquivo sem data', in_array ('teste_api_release_before-restore_sem-data.tar.gz', $plan ['ignore']));
+
+check ('shielded: 30 dias exatos ainda protegido, 31 não', Retention::shielded ('x_before-restore_2026-09-23_12-00-00.tar.gz', $now) && !Retention::shielded ('x_before-restore_2026-09-22_12-00-00.tar.gz', $now));
+
+check ('shielded: sem a marca, nunca', !Retention::shielded ('x_2026-10-22_12-00-00.tar.gz', $now));
+
+$keys = array_keys ($plan ['keep']);
+
+check ('keep segue do mais recente ao mais antigo com o protegido no meio', array_search ('teste_api_release_1.0.0-1_before-restore_2026-10-20_14-00-00.tar.gz', $keys) === 3, json_encode ($keys));
+
+// ---------------------------------------------------------------------------
 
 echo "\n". ($total - $failures) ." of ". $total ." test(s) passed. \n";
 

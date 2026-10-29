@@ -151,6 +151,57 @@ class Cloud
     }
 
     /**
+     * Arquivos sob o diretório de uma app no bucket, em todos os níveis
+     * (lsjson -R): [['path' => 'alpha/x.tar.gz', 'name' => 'x.tar.gz', 'mtime' => int, 'size' => int], ...].
+     * Usado pelo `io restore`, que lê <projeto>/<app>/<alpha|beta|release|upload>/.
+     */
+    static public function tree ($dir)
+    {
+        $cmd = self::RCLONE .' lsjson -R --files-only --no-mimetype '. self::FLAGS .' '. escapeshellarg (self::path ($dir));
+
+        echo 'COMMAND > '. $cmd ."\n";
+
+        $result = BackupVolume::command ($cmd, self::env ());
+
+        $list = json_decode (implode ("\n", $result ['out']), TRUE);
+
+        if ($result ['code'] !== 0 || !is_array ($list))
+            throw new Exception ("Unable to list the bucket (". self::reason ($result) .")");
+
+        $files = [];
+
+        foreach ($list as $item)
+        {
+            if (!is_array ($item) || !empty ($item ['IsDir']) || !isset ($item ['Path'])) continue;
+
+            $files [] = [ 'path' => (string) $item ['Path'], 'name' => (string) ($item ['Name'] ?? basename ((string) $item ['Path'])), 'mtime' => self::time ((string) ($item ['ModTime'] ?? '')), 'size' => intval ($item ['Size'] ?? 0) ];
+        }
+
+        return $files;
+    }
+
+    /**
+     * Baixa um arquivo do bucket para a raiz do volume, com outro nome se
+     * preciso ($local), num contêiner auxiliar com o volume em modo escrita.
+     * `copyto` de um objeto só; o tamanho é conferido pelo chamador.
+     */
+    static public function download ($volume, $dir, $name, $local)
+    {
+        $env = self::env ();
+
+        $cmd = BackupVolume::docker ($volume, TRUE, TRUE, array_keys ($env))
+            .' rclone copyto '. escapeshellarg (self::path ($dir, $name)) .' '. escapeshellarg (BackupVolume::MOUNT .'/'. $local)
+            .' '. self::FLAGS .' --stats 0';
+
+        echo 'COMMAND > '. $cmd ."\n";
+
+        $result = BackupVolume::command ($cmd, $env);
+
+        if ($result ['code'] !== 0)
+            throw new Exception ("Unable to download '". $name ."' from the bucket (". self::reason ($result) .")");
+    }
+
+    /**
      * Envia ao bucket os arquivos $names do volume, num contêiner auxiliar com o
      * volume em modo leitura. `copy --ignore-existing` com um filtro por nome
      * exato: nunca `sync`, nunca sobrescreve nem apaga nada no destino.

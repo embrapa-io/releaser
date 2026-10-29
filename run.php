@@ -135,6 +135,21 @@ $_operations = [
 		'maintenance',
 		'Back up builds by running the \'backup\' CLI service of each stack. Builds without it (e.g., frontends) are skipped.'
 	),
+	'restore' => new Operation (
+		'Restore a backup (local volume or S3 bucket)',
+		'Controller::restore',
+		1,
+		'[BUILD] [--list] [--file [GROUP/]NAME] [--from local|s3] [--sha256 HASH] [--check] [--yes] [--accept-cross-stage] [--accept-upload]',
+		[
+			'proj-b/web@release',
+			'proj-b/web@release --list',
+			'proj-b/web@release --file proj-b_web_release_1.26.10-3_2026-10-28_02-00-00.tar.gz',
+			'proj-b/web@alpha --file upload/legacy-system.tar.gz --check',
+			'proj-b/web@release --file proj-b_web_release_1.26.10-3_2026-10-28_02-00-00.tar.gz --yes'
+		],
+		'maintenance',
+		'Restore on ONE build a backup from the backup volume of this server or from the S3 bucket (io cloud): <bucket>/<project>/<app>/<alpha|beta|release|upload>/, where upload/ is for files sent by hand (e.g., data migrated from another system, with the same structure as the backups of the app). Lists the backups of the app in the three stages, asks which one and asks to type the name of the build to confirm. Before restoring, backs up the build (marked \'_before-restore_\', kept out of the rotation for 30 days and also sent to the bucket); then downloads (from the bucket, needing twice the size free), checks the SHA-256 and the tar.gz and runs the \'restore\' service of the app with BACKUP_FILE_TO_RESTORE, as the restore of the platform does. With --list, only lists; with --check, only downloads and checks (nothing is restored); with --yes, asks nothing (requires --file, and --accept-cross-stage or --accept-upload for files of another stage or of upload/). The result goes by e-mail. Docker Compose only.'
+	),
 	'sanitize' => new Operation (
 		'Run the sanitize service of builds',
 		'Controller::sanitize',

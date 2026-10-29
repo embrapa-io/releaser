@@ -466,6 +466,56 @@ class DockerCompose extends Orchestrator
         }
     }
 
+    /**
+     * Serviço 'restore' da app com BACKUP_FILE_TO_RESTORE = $file (nome do
+     * .tar.gz na raiz do volume de backup), o mesmo contrato do restore da
+     * plataforma (Doctor). A variável vai no ambiente da interpolação do Compose
+     * e no contêiner (-e). As últimas linhas da saída são impressas sempre: é por
+     * elas que se vê o que o serviço da app restaurou.
+     */
+    static public function restore ($path, $namespace, $file)
+    {
+        if (!preg_match ('/^[A-Za-z0-9._-]+\.tar\.gz$/', $file))
+            throw new Exception ("Invalid file name to restore");
+
+        exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
+
+        if ($return !== 0)
+            throw new Exception ("Missing 'docker-compose' command");
+
+        unset ($return);
+
+        chdir ($path);
+
+        self::requireCliService ('restore');
+
+        echo "INFO > Trying to execute restore service...\n";
+
+        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache restore'."\n";
+
+        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache restore 2>&1', $output1, $return1);
+
+        if ($return1 !== 0)
+        {
+            echo implode ("\n", $output1) ."\n";
+
+            throw new Exception ("Restore service failed to BUILD");
+        }
+
+        $run = self::env ('.env.sh') .' BACKUP_FILE_TO_RESTORE='. escapeshellarg ($file) .' timeout '. self::RESTORE_TIMEOUT .' '. self::DOCKER_COMPOSE .' run --rm --no-deps -e BACKUP_FILE_TO_RESTORE='. escapeshellarg ($file) .' restore';
+
+        echo 'COMMAND > '. $run ."\n";
+
+        exec ($run .' 2>&1', $output2, $return2);
+
+        echo implode ("\n", array_slice ($output2, -40)) ."\n";
+
+        if ($return2 !== 0)
+            throw new Exception ($return2 === 124 ? "Restore service RUN timeout (". (self::RESTORE_TIMEOUT / 3600) ." hours)" : "Restore service failed to RUN");
+
+        return array_slice ($output2, -40);
+    }
+
     static public function sanitize ($path, $namespace)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);

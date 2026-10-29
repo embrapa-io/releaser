@@ -15,6 +15,9 @@ abstract class Orchestrator
     // Tempo máximo do pull e do build do `restart --upgrade` (o mesmo do deployer da plataforma).
     const UPGRADE_TIMEOUT = 1200;
 
+    // Serviço 'restore' da app (io restore): 12 horas, como no Doctor da plataforma.
+    const RESTORE_TIMEOUT = 43200;
+
     const CLI_SERVICES = [
         'backup',
         'restore',
@@ -41,6 +44,7 @@ abstract class Orchestrator
     abstract public static function restart ($path, $namespace, $upgrade = FALSE);
     abstract public static function backup ($path, $namespace);
     abstract public static function sanitize ($path, $namespace);
+    abstract public static function restore ($path, $namespace, $file);
     abstract public static function cleaner ($path, $namespace, $policy, $dryRun = FALSE);
     abstract public static function reference ();
 
@@ -514,6 +518,12 @@ abstract class Orchestrator
      * declarar um volume chamado 'backup' (ou cujo nome termine em '_backup'),
      * esse nome prevalece. O volume precisa existir no Docker.
      */
+    /** Volume de backup da build (io restore): ver backupVolume (). */
+    public static function volume ($path, $namespace)
+    {
+        return static::backupVolume ($path, $namespace);
+    }
+
     protected static function backupVolume ($path, $namespace)
     {
         $volume = $namespace .'_backup';

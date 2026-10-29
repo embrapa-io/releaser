@@ -235,7 +235,11 @@ SH;
 
     static private function reason ($result)
     {
-        $lines = array_values (array_filter (array_merge ($result ['err'], $result ['out']), 'strlen'));
+        // O docker termina todo erro de 'run' com a dica "Run 'docker run --help' for more information": sem tirá-la,
+        // a última linha seria ela, e o erro de fato (a linha anterior) se perderia.
+        $lines = array_values (array_filter (array_merge ($result ['err'], $result ['out']), function ($line) {
+            return strlen (trim ($line)) && !preg_match ("/^Run '.+ --help' for more information/", trim ($line));
+        }));
 
         $last = sizeof ($lines) ? $lines [sizeof ($lines) - 1] : 'exit code '. $result ['code'];
 

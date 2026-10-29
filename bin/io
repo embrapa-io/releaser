@@ -418,7 +418,10 @@ if [ ! -f "/data/.env" ]; then
     ask_yes_no smtp_secure "SMTP secure" n
     ask_value smtp_from "SMTP from" "(e.g., no-reply@embrapa.br)" "" '^[a-zA-Z0-9,@._+-]+$'
     ask_value smtp_user "SMTP user" "(e.g., you@gmail.com)" "" '^[[:graph:]]+$' optional
-    ask_secret smtp_pass "SMTP password"
+
+    # sem usuário, o envio é sem autenticação (relay da rede) e a senha não se aplica
+    smtp_pass=''
+    [ -n "$smtp_user" ] && ask_secret smtp_pass "SMTP password"
 
     echo ""
 

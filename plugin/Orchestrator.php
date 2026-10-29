@@ -95,13 +95,18 @@ abstract class Orchestrator
     /**
      * Containers da build neste host, pelo rótulo da stack (Compose: projeto;
      * Swarm: namespace), no formato que o deployer da plataforma usa no health
-     * check: serviço => [image, state, status, healthy, size, created, running].
+     * check: serviço => [image, reference, state, status, healthy, size, created, running].
      * Serviços de linha de comando (CLI_SERVICES) ficam de fora. Com réplicas,
      * vale o container em execução (ou o primeiro).
+     *
+     * `image` é o que o `docker ps` mostra e é o que o Trivy varre (a imagem em
+     * execução); quando a tag foi puxada de novo depois que o container subiu, é o
+     * ID da imagem. `reference` é o texto do compose, do `Config.Image` (ver
+     * references), e vai ao core para o alerta de CVE classificar a imagem.
      */
     public static function containers ($namespace)
     {
-        $format = '{{.Label "'. static::SERVICE_LABEL .'"}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Size}}|{{.CreatedAt}}|{{.RunningFor}}';
+        $format = '{{.Label "'. static::SERVICE_LABEL .'"}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Size}}|{{.CreatedAt}}|{{.RunningFor}}|{{.ID}}';
 
         $cmd = static::DOCKER .' ps -a --filter '. escapeshellarg ('label='. static::STACK_LABEL .'='. $namespace) .' --format '. escapeshellarg ($format);
 
@@ -116,7 +121,7 @@ abstract class Orchestrator
         {
             $parts = explode ('|', $line);
 
-            if (sizeof ($parts) !== 7) continue;
+            if (sizeof ($parts) !== 8) continue;
 
             $service = trim ($parts [0]);
 
@@ -144,6 +149,7 @@ abstract class Orchestrator
 
             $services [$service] = [
                 'image' => trim ($parts [1]),
+                'id' => trim ($parts [7]),
                 'state' => $state,
                 'status' => trim ($parts [3]),
                 'healthy' => sizeof ($h) == 2 ? $h [1] : 'undefined',
@@ -155,7 +161,54 @@ abstract class Orchestrator
 
         ksort ($services);
 
+        $references = self::references (array_filter (array_column ($services, 'id')));
+
+        foreach ($services as $service => $c)
+            $services [$service]['reference'] = $references [substr ($c ['id'], 0, 12)] ?? $c ['image'];
+
         return $services;
+    }
+
+    /**
+     * Referência do compose de cada container ([12 primeiros caracteres do ID =>
+     * "postgres:18-alpine"]), num só `docker inspect`. Falha não interrompe nada:
+     * sem a referência, vale o que o `docker ps` mostrou.
+     */
+    public static function references ($ids)
+    {
+        if (!sizeof ($ids)) return [];
+
+        exec (static::DOCKER .' inspect --type container --format '. escapeshellarg ('{{.Id}}|{{.Config.Image}}') .' '. implode (' ', array_map ('escapeshellarg', $ids)) .' 2> /dev/null', $output, $return);
+
+        return self::parseReferences ($output);
+    }
+
+    /**
+     * Linhas "ID|Config.Image" do inspect em [ID curto => referência]. Descarta a
+     * referência que é ela mesma um ID de imagem. No Swarm, o Config.Image vem com
+     * o digest fixado pelo serviço ("nginx:1.27@sha256:..."): o digest sai quando há
+     * tag, para a imagem não ser tomada como fixada por digest pela equipe.
+     */
+    public static function parseReferences ($lines)
+    {
+        $refs = [];
+
+        foreach ($lines as $line)
+        {
+            $parts = explode ('|', trim ($line), 2);
+
+            if (sizeof ($parts) !== 2 || $parts [0] === '') continue;
+
+            $ref = trim ($parts [1]);
+
+            if ($ref === '' || preg_match ('/^(sha256:)?[0-9a-f]{12,64}$/', $ref)) continue;
+
+            if (preg_match ('#^(.+/)?[^/@]+:[^/@]+@sha256:[0-9a-f]+$#', $ref)) $ref = substr ($ref, 0, strpos ($ref, '@'));
+
+            $refs [substr ($parts [0], 0, 12)] = $ref;
+        }
+
+        return $refs;
     }
 
     /**

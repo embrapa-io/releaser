@@ -269,7 +269,8 @@ env_summary() {
 
   while IFS= read -r line; do
     case "$line" in
-      GITLAB_TOKEN=*|SMTP_PASS=*|S3_SECRET_KEY=*) echo "${line%%=*}=$(mask "${line#*=}")" ;;
+      # segredo vazio (SMTP sem usuário) fica vazio, como no .env: a máscara sugeriria uma senha
+      GITLAB_TOKEN=?*|SMTP_PASS=?*|S3_SECRET_KEY=?*) echo "${line%%=*}=$(mask "${line#*=}")" ;;
       *) echo "$line" ;;
     esac
   done <<< "$1"
@@ -565,7 +566,8 @@ chmod 600 /root/.ssh/config /root/.ssh/id_rsa 2> /dev/null
 # Sem builds: em vez de pedir uma lista (que gerava esqueletos incompletos), orienta para o
 # 'io install', que busca na plataforma equipe, DSN do Sentry, ID do Matomo e variáveis. O comando
 # pedido segue normalmente depois do aviso (sem comando, abre o menu).
-if [ ! -f "/data/builds.json" ] && ! ls /data/builds/*.json > /dev/null 2>&1 && [ "$1" != "install" ]; then
+# Só builds desativadas (arquivos .bkp etc. em builds/) não é "nenhuma build": o 'io info' as lista.
+if [ ! -f "/data/builds.json" ] && ! ls /data/builds/* > /dev/null 2>&1 && [ "$1" != "install" ]; then
   mkdir -p /data/builds
 
   echo ""

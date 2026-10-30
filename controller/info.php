@@ -17,7 +17,25 @@ echo "Latest published: ". (isset ($latest ['version']) ? $latest ['version'] .'
 
 echo "Last upgrade: ". Upgrade::describe (Upgrade::last ($_data)) ." \n";
 
-if ($_noBuilds !== NULL) throw $_noBuilds;
+// só builds desativadas (arquivos .bkp etc.): lista-as e termina, sem erro; nenhuma build = o erro de sempre
+if ($_noBuilds !== NULL)
+{
+	$disabled = self::disabledBuilds ($_data);
+
+	if (!sizeof ($disabled)) throw $_noBuilds;
+
+	echo "\n";
+
+	echo "No active builds. Disabled builds (files in 'builds/' without the .json extension): \n";
+
+	foreach ($disabled as $entry) echo "  builds/". $entry ."\n";
+
+	echo "\n";
+
+	echo "INFO > To enable a build again, rename its file back to '.json' (or add a new one with 'io install'). \n";
+
+	return;
+}
 
 self::singleton ();
 

@@ -309,7 +309,7 @@ foreach ($_builds as $_build => $_b)
 
 	try
 	{
-		(self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
+		$_backup = (self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
 	}
 	catch (Exception $e)
 	{
@@ -339,5 +339,13 @@ foreach ($_builds as $_build => $_b)
 
 	echo "SUCCESS > All done! Version '". $_newer ['name'] ."' of build '". $_build ."' is DEPLOYED! \n";
 
-	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS', mailBody (), $_b->team);
+	// O backup que falha não impede o deploy, mas precisa aparecer no assunto: como WARNING no meio do log de um
+	// RELEASE SUCCESS, passou 100 releases sem ser notado (embrapa-io/forge, nov/2026). No primeiro deploy a stack ainda
+	// não existe e o backup falhar é o esperado.
+	$_backupFailed = $_backup === FALSE && ($_last || $_force);
+
+	if ($_backupFailed)
+		echo "WARNING > The deploy is done, but the backup before it FAILED (see above)! Fix it to keep the build protected. \n";
+
+	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS'. ($_backupFailed ? ' (BACKUP FAILED)' : ''), mailBody (), $_b->team);
 }

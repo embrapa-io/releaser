@@ -39,6 +39,7 @@ abstract class Orchestrator
     }
 
     abstract public static function validate ($path, $namespace);
+    // Devolve o resultado do backup antes do deploy: TRUE feito, FALSE falhou (o deploy segue), NULL sem serviço 'backup'.
     abstract public static function deploy ($path, $namespace);
     abstract public static function stop ($path, $namespace, $down = FALSE);
     abstract public static function restart ($path, $namespace, $upgrade = FALSE);

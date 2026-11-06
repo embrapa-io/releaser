@@ -56,26 +56,27 @@ class DockerSwarm extends Orchestrator
 
         echo "INFO > Trying to run the backup service before deploying...\n";
 
+        // Resultado do backup para o e-mail do deploy (ver Orchestrator::deploy).
+        $backup = NULL;
+
         try
         {
             self::buildAndRunCliService ('backup', $path, $name);
+
+            $backup = TRUE;
+        }
+        catch (SkipException $e)
+        {
+            echo "INFO > ". $e->getMessage () .". Nothing to back up. \n";
         }
         catch (Exception $e)
         {
+            $backup = FALSE;
+
             echo "WARNING > Backup service failed: ". $e->getMessage () ."! \n";
         }
 
-        echo "INFO > Creating a stack network named '". $name ."' with Docker... \n";
-
-        echo 'COMMAND > '. self::DOCKER .' network create -d overlay '. $name ."\n";
-
-        exec (self::DOCKER .' network create -d overlay '. $name .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-            echo implode ("\n", $output) ."\n";
-
-        unset ($return);
-        unset ($output);
+        self::createNetwork ($name);
 
         echo "INFO > Building application with Docker Compose... \n";
 
@@ -148,6 +149,32 @@ class DockerSwarm extends Orchestrator
 
             throw new Exception ('Error when deploying stack of containers with Docker Swarm');
         }
+
+        return $backup;
+    }
+
+    // A rede é criada no primeiro deploy; nos seguintes, o 'network create' só imprimia o erro "already exists".
+    static private function createNetwork ($name)
+    {
+        exec (self::DOCKER .' network inspect '. escapeshellarg ($name) .' > /dev/null 2>&1', $trash, $return);
+
+        if ($return === 0)
+        {
+            echo "INFO > Stack network '". $name ."' already exists. \n";
+
+            return;
+        }
+
+        unset ($return);
+
+        echo "INFO > Creating a stack network named '". $name ."' with Docker Swarm... \n";
+
+        echo 'COMMAND > '. self::DOCKER .' network create -d overlay '. $name ."\n";
+
+        exec (self::DOCKER .' network create -d overlay '. $name .' 2>&1', $output, $return);
+
+        if ($return !== 0)
+            echo implode ("\n", $output) ."\n";
     }
 
     static public function checkDockerSwarmFile ($folder, $prefix)
@@ -545,17 +572,7 @@ class DockerSwarm extends Orchestrator
         unset ($return);
         unset ($output);
 
-        echo "INFO > Creating a stack network named '". $name ."' with Docker Swarm... \n";
-
-        echo 'COMMAND > '. self::DOCKER .' network create -d overlay '. $name ."\n";
-
-        exec (self::DOCKER .' network create -d overlay '. $name .' 2>&1', $output, $return);
-
-        if ($return !== 0)
-            echo implode ("\n", $output) ."\n";
-
-        unset ($return);
-        unset ($output);
+        self::createNetwork ($name);
 
         echo "INFO > Deploying application stack as '". $name ."' in cluster with Docker Swarm... \n";
 

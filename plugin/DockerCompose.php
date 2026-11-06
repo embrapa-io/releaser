@@ -32,37 +32,68 @@ class DockerCompose extends Orchestrator
 
         echo "INFO > Trying to run the backup service before deploying...\n";
 
-        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
+        // Resultado do backup para o e-mail do deploy (ver Orchestrator::deploy): TRUE feito, FALSE falhou, NULL sem
+        // serviço 'backup' (comum nos fronts, não é falha).
+        $backup = NULL;
 
-        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output, $return);
-
-        unset ($return);
-        unset ($output);
-
-        echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
-
-        exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output, $return);
-
-        if ($return !== 0)
+        try
         {
-            echo implode ("\n", $output) ."\n";
+            self::requireCliService ('backup');
 
-            echo "WARNING > Backup service failed! \n";
+            echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup'."\n";
+
+            exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' build --force-rm --no-cache backup 2>&1', $output, $return);
+
+            unset ($return);
+            unset ($output);
+
+            echo 'COMMAND > '. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup'."\n";
+
+            exec (''. self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' run --rm --no-deps backup 2>&1', $output, $return);
+
+            $backup = $return === 0;
+
+            if (!$backup)
+            {
+                echo implode ("\n", $output) ."\n";
+
+                echo "WARNING > Backup service failed! \n";
+            }
+            else
+                echo "SUCCESS > Backup service ran successfully! \n";
         }
-        else
-            echo "SUCCESS > Backup service ran successfully! \n";
+        catch (SkipException $e)
+        {
+            echo "INFO > ". $e->getMessage () .". Nothing to back up. \n";
+        }
+        catch (Exception $e)
+        {
+            $backup = FALSE;
+
+            echo "WARNING > Backup service failed: ". $e->getMessage () ."! \n";
+        }
 
         unset ($return);
         unset ($output);
 
-        echo "INFO > Creating a stack network named '". $namespace ."' with Docker... \n";
+        // A rede é criada no primeiro deploy; nos seguintes, o 'network create' só imprimia o erro "already exists".
+        exec (self::DOCKER .' network inspect '. escapeshellarg ($namespace) .' > /dev/null 2>&1', $trash, $return);
 
-        echo 'COMMAND > '. self::DOCKER .' network create '. $namespace ."\n";
+        if ($return === 0)
+            echo "INFO > Stack network '". $namespace ."' already exists. \n";
+        else
+        {
+            unset ($return);
 
-        exec (self::DOCKER .' network create '. $namespace .' 2>&1', $output, $return);
+            echo "INFO > Creating a stack network named '". $namespace ."' with Docker... \n";
 
-        if ($return !== 0)
-            echo implode ("\n", $output) ."\n";
+            echo 'COMMAND > '. self::DOCKER .' network create '. $namespace ."\n";
+
+            exec (self::DOCKER .' network create '. $namespace .' 2>&1', $output, $return);
+
+            if ($return !== 0)
+                echo implode ("\n", $output) ."\n";
+        }
 
         unset ($return);
         unset ($output);
@@ -108,6 +139,8 @@ class DockerCompose extends Orchestrator
 
         if ($return !== 0)
             throw new Exception ('Error when starting containers with Docker Compose');
+
+        return $backup;
     }
 
     static public function checkDockerComposeFile ($folder, $namespace)
@@ -288,6 +321,16 @@ class DockerCompose extends Orchestrator
             $warning = TRUE;
         }
 
+        // A validação dos volumes confere só o nome. Volume que não existe no servidor derruba o 'up' (dados) ou faz o
+        // backup falhar a cada deploy sem ninguém notar (o '_backup' é usado só pelos serviços CLI): o Forge ficou assim
+        // da 0.26.10-4 à -100 (nov/2026).
+        foreach (self::missingVolumes () as $volume)
+        {
+            echo "WARNING > External volume '". $volume ."' does NOT exist on this server! Create it: ". self::createVolumeCommand ($volume, $namespace) ." \n";
+
+            $warning = TRUE;
+        }
+
         if ($warning)
             echo "WARNING > File docker-compose.yaml is VALID, but has some warnings to fix! \n";
         else
@@ -417,6 +460,63 @@ class DockerCompose extends Orchestrator
      * Lança SkipException se o serviço CLI não existir no docker-compose.yaml
      * interpolado (apps de frontend, por exemplo, não têm 'backup' nem 'sanitize').
      */
+    /*
+     * Volumes externos do compose (os da aplicação, pelo .env.io, e os dos serviços CLI, pelo .env.sh: o
+     * 'docker-compose config' omite volume que nenhum serviço ativo usa) que não existem no servidor. Roda na pasta do
+     * clone; falha ao interpretar o compose não acusa nada (a validação já tratou).
+     */
+    static private function missingVolumes ()
+    {
+        $names = [];
+
+        foreach ([ '.env.io', '.env.sh' ] as $env)
+        {
+            $out = tempnam ('.embrapa', '_');
+
+            exec (self::env ($env) .' '. self::DOCKER_COMPOSE .' config > '. $out .' 2> /dev/null', $trash, $return);
+
+            // O helper/error.php transforma o warning do yaml em exceção.
+            try { $config = $return === 0 ? yaml_parse_file ($out) : FALSE; }
+            catch (Exception $e) { $config = FALSE; }
+
+            unlink ($out);
+
+            unset ($return);
+
+            if (!is_array ($config) || !isset ($config ['volumes']) || !is_array ($config ['volumes'])) continue;
+
+            foreach ($config ['volumes'] as $volume)
+                if (is_array ($volume) && !empty ($volume ['external']) && isset ($volume ['name']))
+                    $names [$volume ['name']] = TRUE;
+        }
+
+        $missing = [];
+
+        foreach (array_keys ($names) as $name)
+        {
+            exec (self::DOCKER .' volume inspect '. escapeshellarg ($name) .' > /dev/null 2>&1', $trash, $return);
+
+            if ($return !== 0) $missing [] = $name;
+
+            unset ($return);
+        }
+
+        return $missing;
+    }
+
+    // Mesmo comando que o 'io install' orienta: o de backup vai ligado à pasta BACKUP_DIR do host.
+    static private function createVolumeCommand ($volume, $namespace)
+    {
+        if ($volume !== $namespace .'_backup')
+            return 'docker volume create '. $volume;
+
+        $dir = rtrim (trim ((string) getenv ('BACKUP_DIR')), '/');
+
+        if ($dir === '') $dir = '/root/backup';
+
+        return 'mkdir -p '. $dir .' && docker volume create --driver local --opt type=none --opt o=bind --opt device='. $dir .' '. $volume;
+    }
+
     static private function requireCliService ($service)
     {
         exec (self::env ('.env.sh') .' '. self::DOCKER_COMPOSE .' config --services 2>/dev/null', $services, $return);

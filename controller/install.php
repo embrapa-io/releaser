@@ -262,7 +262,10 @@ foreach ($variables as $v)
 
 		case 'PASSWORD':
 		case 'SECRET':
-			$value = $randomize ? $random () : $ask ($name .' ('. $type .')', $default);
+			// "mask": "empty" no settings.json: segredo que vem de fora (chave de API, token), nunca sorteado
+			$external = isset ($v->mask) && $v->mask === 'empty';
+
+			$value = $randomize && !$external ? $random () : $ask ($name .' ('. $type . ($external ? ', from an external service' : '') .')', $default);
 
 			break;
 

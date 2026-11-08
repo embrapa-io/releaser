@@ -415,7 +415,7 @@ class DockerCompose extends Orchestrator
             return;
         }
 
-        // `--upgrade`: o mesmo do deployer da plataforma (pull, build --pull e up). Com `--force-recreate`, como no
+        // `--upgrade`: o mesmo do deployer da plataforma (pull, build --pull --no-cache e up). Com `--force-recreate`, como no
         // deploy: sem ele, serviço sem imagem nova nem era reiniciado, e o `build --pull` move a tag mesmo sem mudar
         // o conteúdo (atestados do BuildKit), deixando o container preso a uma imagem que o Trivy não encontra mais
         // (visto com o containerd image store). Os CLI_SERVICES ficam no perfil `cli` e não sobem.

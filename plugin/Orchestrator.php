@@ -53,7 +53,9 @@ abstract class Orchestrator
      * Renova as imagens da build, como o deployer da plataforma no `restart` com
      * `upgrade`: baixa as imagens de registro (as *floating*, como `latest` ou
      * `8.3-apache`, mudam de conteúdo sem mudar de nome) e reconstrói os serviços
-     * `build:` com `--pull`, que renova a imagem base do Dockerfile. Só os serviços
+     * `build:` com `--pull --no-cache`: o `--pull` renova a imagem base do Dockerfile e
+     * o `--no-cache` refaz os `RUN` (sem ele, com a base inalterada, o `apk upgrade` do
+     * Dockerfile ficaria no cache e o pacote corrigido não entraria). Só os serviços
      * do `.env.io` (sem os CLI_SERVICES, que ficam no perfil `cli`). Falha de pull
      * de um serviço não aborta (`--ignore-pull-failures`); falha de build, sim.
      */
@@ -77,9 +79,9 @@ abstract class Orchestrator
 
         echo "INFO > Rebuilding the services with 'build:' over a renewed base image... \n";
 
-        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull'."\n";
+        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache'."\n";
 
-        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull 2>&1', $output, $return);
+        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache 2>&1', $output, $return);
 
         if (sizeof ($output)) echo implode ("\n", $output) ."\n";
 

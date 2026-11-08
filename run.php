@@ -112,7 +112,7 @@ $_operations = [
 			'proj-b/web@release --upgrade'
 		],
 		'deploy',
-		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' over a renewed base image (build --pull) and recreates the containers; then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
+		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' from scratch over a renewed base image (build --pull --no-cache) and recreates the containers; then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
 	),
 	'rollback' => new Operation (
 		'Roll a build back to a previous version',

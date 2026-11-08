@@ -514,7 +514,7 @@ class DockerSwarm extends Orchestrator
     {
         chdir ($path);
 
-        // `--upgrade`: renova as imagens (pull e build --pull) e as envia ao registro, como no deploy; o `stack
+        // `--upgrade`: renova as imagens (pull e build --pull --no-cache) e as envia ao registro, como no deploy; o `stack
         // deploy` abaixo resolve a tag no registro (`--resolve-image always`, padrão), então as floating também mudam.
         if ($upgrade)
         {

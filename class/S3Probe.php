@@ -14,13 +14,15 @@
  * (<projeto>/<app>/<estágio>/.releaser-write-test-<aleatório>), para funcionar com
  * chaves restritas ao prefixo dos projetos do servidor. O nome não tem o prefixo
  * '{projeto}_{app}_{estágio}_', então nem a rotação nem o --list o consideram.
+ * Uma configuração pode servir a vários projetos (a do servidor, no .env) ou a um
+ * só (a própria do projeto, /data/s3/<projeto>.json): prefixes () diz onde testar.
  *
  * Assinatura AWS Signature Version 4 feita aqui (sign ()), com URL no estilo de
  * caminho (<endpoint>/<bucket>/<chave>), como o rclone com provider 'Other'.
  * Segredos só em memória; nunca na saída.
  *
  * Também roda pela linha de comando, para o assistente do `bin/io` (`s3_test`):
- *   S3_ENDPOINT=… S3_BUCKET=… S3_ACCESS_KEY=… S3_SECRET_KEY=… [S3_REGION=…] php class/S3Probe.php
+ *   S3_ENDPOINT=… S3_BUCKET=… S3_ACCESS_KEY=… S3_SECRET_KEY=… [S3_REGION=…] php class/S3Probe.php [/data] [projeto]
  * Imprime uma linha e sai com 0 (gravação ok) ou 1.
  */
 class S3Probe
@@ -95,11 +97,8 @@ class S3Probe
         return $all;
     }
 
-    /**
-     * Diretório de uma build deste servidor no bucket ('<projeto>/<app>/<estágio>'),
-     * de preferência uma com auto.cloud ligado; '' sem builds. Nunca lança.
-     */
-    static public function prefix ($data = '/data')
+    /** Builds válidas deste servidor (builds/*.json e o legado builds.json). Nunca lança. */
+    static public function builds ($data = '/data')
     {
         $builds = [];
 
@@ -121,18 +120,81 @@ class S3Probe
         }
         catch (\Throwable $e) {}
 
-        $valid = array_values (array_filter ($builds, function ($b) {
-            return is_object ($b) && isset ($b->project, $b->app, $b->stage) && preg_match ('/^[a-z0-9-]+$/', $b->project .$b->app .$b->stage);
+        return array_values (array_filter ($builds, function ($b) {
+            return is_object ($b) && isset ($b->project, $b->app, $b->stage) && is_string ($b->project) && is_string ($b->app) && is_string ($b->stage)
+                && preg_match ('/^[a-z0-9-]+$/', $b->project .$b->app .$b->stage);
         }));
+    }
 
-        if (!sizeof ($valid)) return '';
+    /**
+     * Diretórios do bucket onde testar a gravação ('<projeto>/<app>/<estágio>'), para
+     * as builds que usam a mesma configuração. Nunca lança.
+     *
+     * Com $project (configuração própria do projeto, <data>/s3/<projeto>.json): o de
+     * uma build dele, de preferência com auto.cloud ligado; sem build dele, '<projeto>'.
+     *
+     * Sem $project (configuração do servidor, no .env): um por projeto que NÃO tem
+     * configuração própria e tem build com auto.cloud ligado, porque a chave pode
+     * estar restrita a parte deles; nenhum com a cópia ligada = só o da primeira
+     * build. [''] sem builds no servidor e [] quando todas usam configuração própria.
+     */
+    static public function prefixes ($data = '/data', $project = NULL)
+    {
+        $builds = self::builds ($data);
 
-        $chosen = $valid [0];
+        $dir = function ($b) { return $b->project .'/'. $b->app .'/'. $b->stage; };
 
-        foreach ($valid as $b)
-            if (isset ($b->auto) && is_object ($b->auto) && !empty ($b->auto->cloud)) { $chosen = $b; break; }
+        $cloud = function ($b) { return isset ($b->auto) && is_object ($b->auto) && !empty ($b->auto->cloud); };
 
-        return $chosen->project .'/'. $chosen->app .'/'. $chosen->stage;
+        if ($project !== NULL)
+        {
+            $own = array_values (array_filter ($builds, function ($b) use ($project) { return $b->project === $project; }));
+
+            if (!sizeof ($own)) return [ $project ];
+
+            foreach ($own as $b)
+                if ($cloud ($b)) return [ $dir ($b) ];
+
+            return [ $dir ($own [0]) ];
+        }
+
+        if (!sizeof ($builds)) return [ '' ];
+
+        $builds = array_values (array_filter ($builds, function ($b) use ($data) { return !file_exists ($data .'/s3/'. $b->project .'.json'); }));
+
+        if (!sizeof ($builds)) return [];
+
+        $prefixes = [];
+
+        foreach ($builds as $b)
+            if ($cloud ($b) && !isset ($prefixes [$b->project])) $prefixes [$b->project] = $dir ($b);
+
+        return sizeof ($prefixes) ? array_values ($prefixes) : [ $dir ($builds [0]) ];
+    }
+
+    /**
+     * run () em cada diretório de $prefixes; para na primeira falha. Devolve ['ok' =>
+     * bool, 'message' => string, 'tested' => quantos passaram]. Nunca lança.
+     */
+    static public function runAll ($endpoint, $bucket, $access, $secret, $region, array $prefixes)
+    {
+        if (!sizeof ($prefixes))
+            return [ 'ok' => TRUE, 'tested' => 0, 'message' => 'writing not tested (no build of this server uses these settings)' ];
+
+        $tested = 0;
+
+        foreach ($prefixes as $prefix)
+        {
+            $result = self::run ($endpoint, $bucket, $access, $secret, $region, $prefix);
+
+            if (!$result ['ok']) return $result + [ 'tested' => $tested ];
+
+            $tested++;
+        }
+
+        if ($tested === 1) return $result + [ 'tested' => 1 ];
+
+        return [ 'ok' => TRUE, 'tested' => $tested, 'message' => 'writing ok (test uploads opened and aborted in the folders of '. $tested .' projects)' ];
     }
 
     /**
@@ -203,7 +265,10 @@ if (PHP_SAPI === 'cli' && isset ($argv [0]) && realpath ($argv [0]) === __FILE__
 
     $value = function ($name) { return trim ((string) getenv ($name)); };
 
-    $result = S3Probe::run ($value ('S3_ENDPOINT'), $value ('S3_BUCKET'), $value ('S3_ACCESS_KEY'), $value ('S3_SECRET_KEY'), $value ('S3_REGION'), S3Probe::prefix (isset ($argv [1]) ? $argv [1] : '/data'));
+    // php class/S3Probe.php [/data] [projeto]: com o projeto, testa a pasta dele; sem, as dos projetos que usam o .env
+    $project = isset ($argv [2]) && preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $argv [2]) ? $argv [2] : NULL;
+
+    $result = S3Probe::runAll ($value ('S3_ENDPOINT'), $value ('S3_BUCKET'), $value ('S3_ACCESS_KEY'), $value ('S3_SECRET_KEY'), $value ('S3_REGION'), S3Probe::prefixes (isset ($argv [1]) ? $argv [1] : '/data', $project));
 
     echo $result ['message'] ."\n";
 

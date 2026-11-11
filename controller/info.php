@@ -72,8 +72,14 @@ foreach ($_builds as $_build => $_b)
 
 	$autoCloud = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;
 
+	// configuração do bucket desta build: a própria do projeto (/data/s3/<projeto>.json), se houver; senão a do servidor (.env)
+	Cloud::select ($_b->project ?? NULL);
+
+	if (Cloud::scope () !== NULL)
+		echo "S3 settings: own of project '". Cloud::scope () ."' (". Cloud::file (Cloud::scope ()) .", bucket '". (Cloud::value ('S3_BUCKET') !== '' ? Cloud::value ('S3_BUCKET') : '?') ."' at ". (Cloud::value ('S3_ENDPOINT') !== '' ? Cloud::value ('S3_ENDPOINT') : '?') .") \n";
+
 	if (!isset ($cloud ['status']))
-		echo "Cloud copy (S3): ". (Retention::policy ($autoCloud) === FALSE ? 'disabled (auto.cloud = false)' : (Cloud::configured () ? 'never run' : 'bucket not configured (S3_* in .env)')) ." \n";
+		echo "Cloud copy (S3): ". (Retention::policy ($autoCloud) === FALSE ? 'disabled (auto.cloud = false)' : (Cloud::configured () ? 'never run' : "bucket not configured (run 'io cloud --setup')")) ." \n";
 	elseif ($cloud ['status'] === 'ok')
 		echo "Cloud copy (S3): ok at ". $cloud ['at'] ." (". intval ($cloud ['uploaded'] ?? 0) ." uploaded, ". Orchestrator::humanSize ($cloud ['bytes_uploaded'] ?? 0) ."; ". intval ($cloud ['deleted'] ?? 0) ." deleted; ". intval ($cloud ['files_after'] ?? 0) ." file(s), ". Orchestrator::humanSize ($cloud ['bytes_after'] ?? 0) ." in the bucket) \n";
 	else

@@ -77,7 +77,9 @@ foreach ($_builds as $_build => $_b)
 	echo "SUCCESS > All done! Version '". $_last ."' of build '". $_build ."' was successfully backed up! \n";
 
 	// Dica da cópia em nuvem (só em execução manual: no daemon o 'cloud' roda logo depois do 'backup').
-	// Sem S3 configurado no .env, nada; com 'auto.cloud' desligado, avisa que o daemon não copiará.
+	// Sem S3 configurado (no arquivo do projeto ou no .env), nada; com 'auto.cloud' desligado, avisa que o daemon não copiará.
+	Cloud::select ($_b->project ?? NULL);
+
 	if (!$_daemon && Cloud::configured ())
 	{
 		$autoCloud = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;

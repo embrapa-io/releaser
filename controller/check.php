@@ -38,15 +38,17 @@ echo $prefix [$check ['clone']['status']] ." > ". $check ['clone']['via'] .": ".
 
 echo "\n";
 
-// Cópia em nuvem: só quando alguma variável S3_* está no .env (ver class/Cloud.php).
+// Cópia em nuvem: uma vez por configuração em uso (ver class/Cloud.php), a do servidor (quando alguma
+// variável S3_* está no .env) e a própria de cada projeto com arquivo em /data/s3/.
 if ($check ['cloud'])
-{
-	echo "INFO > S3 bucket '". (Cloud::value ('S3_BUCKET') !== '' ? Cloud::value ('S3_BUCKET') : '?') ."' at ". (Cloud::value ('S3_ENDPOINT') !== '' ? Cloud::value ('S3_ENDPOINT') : '?') ." (S3_ENDPOINT)... \n";
+	foreach ($check ['cloud']['scopes'] as $scope)
+	{
+		echo "INFO > S3 bucket '". ($scope ['bucket'] !== '' ? $scope ['bucket'] : '?') ."' at ". ($scope ['endpoint'] !== '' ? $scope ['endpoint'] : '?') ." (". ($scope ['project'] === NULL ? "settings of the server, S3_* in the '.env' file" : "settings of project '". $scope ['project'] ."', ". $scope ['file']) .")... \n";
 
-	echo $prefix [$check ['cloud']['status']] ." > S3: ". $check ['cloud']['message'] ." \n";
+		echo $prefix [$scope ['status']] ." > S3: ". $scope ['message'] ." \n";
 
-	echo "\n";
-}
+		echo "\n";
+	}
 
 // Versão do Releaser: há uma mais nova publicada? (consulta agora; falha de rede não é erro)
 $check ['release'] = Upgrade::check ($_data);

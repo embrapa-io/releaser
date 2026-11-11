@@ -20,37 +20,67 @@ $_enabled = array_filter ($_builds, function ($b) { return Retention::policy (is
 
 if ($_daemon && !sizeof ($_enabled)) return;
 
-// Bucket configurado uma única vez no /data/.env (ver class/Cloud.php). No daemon, a
-// falta de configuração é só um aviso (sem e-mail): a cópia fica parada até alguém configurar.
-if (!Cloud::configured ())
-{
-	if ($_daemon)
-		echo "WARNING > Cloud copy is on ('auto.cloud') for ". sizeof ($_enabled) ." build(s), but the S3 bucket is not configured in the '.env' file (missing ". implode (', ', Cloud::missing ()) ."). Skipping. \n";
-	else
-		echo "ERROR > The S3 bucket is not configured! Set in the '.env' file: ". implode (', ', Cloud::missing ()) ." (and, optionally, S3_REGION and S3_RETENTION). See https://embrapa.io/docs/releaser/ \n";
+// Bucket de cada build: a configuração própria do projeto (/data/s3/<projeto>.json, gravada pelo
+// `io cloud --setup <projeto>`), se houver; senão a do servidor (S3_* no /data/.env). Ver class/Cloud.php.
+// Cada configuração em uso é validada uma vez, antes de tocar em qualquer bucket: as builds de uma
+// configuração com problema ficam de fora e as demais seguem.
+$_settings = [];
 
-	return;
+foreach ($_daemon ? $_enabled : $_builds as $_b)
+{
+	Cloud::select ($_b->project ?? NULL);
+
+	$key = (string) Cloud::scope ();
+
+	if (!isset ($_settings [$key])) $_settings [$key] = [ 'project' => Cloud::scope (), 'counts' => NULL, 'builds' => 0 ];
+
+	$_settings [$key]['builds']++;
 }
 
-// Quantos backups guardar no bucket: S3_RETENTION ('D/W/M/Y'); vazio herda RETENTION
-// (padrão 7/4/3/1). Valor malformado aborta antes de tocar no bucket.
-$_spec = Cloud::value ('S3_RETENTION') !== '' ? Cloud::value ('S3_RETENTION') : Cloud::value ('RETENTION');
+$_invalid = FALSE;
 
-try
+foreach ($_settings as $key => $setting)
 {
-	$_counts = Retention::parse ($_spec);
+	Cloud::select ($setting ['project']);
 
-	Cloud::bucket ();
+	// No daemon, a falta de configuração é só um aviso (sem e-mail): a cópia fica parada até alguém configurar.
+	if (!Cloud::configured ())
+	{
+		if ($_daemon)
+			echo "WARNING > Cloud copy is on ('auto.cloud') for ". $setting ['builds'] ." build(s), but the S3 bucket is not configured in ". Cloud::source () ." (missing ". implode (', ', Cloud::missing ()) ."). Skipping. \n";
+		else
+			echo "ERROR > The S3 bucket is not configured! Set in ". Cloud::source () .": ". implode (', ', Cloud::missing ()) ." (and, optionally, ". Cloud::label ('S3_REGION') ." and ". Cloud::label ('S3_RETENTION') ."), or run 'io cloud --setup". ($setting ['project'] !== NULL ? ' '. $setting ['project'] : '') ."'. See https://embrapa.io/docs/releaser/ \n";
+
+		continue;
+	}
+
+	// Quantos backups guardar no bucket ('D/W/M/Y'): a retenção do projeto, a S3_RETENTION ou, na falta
+	// delas, a RETENTION (padrão 7/4/3/1). Valor malformado, ou nome de bucket inválido, tira as builds dessa
+	// configuração da rodada antes de tocar no bucket.
+	$retention = Cloud::retention ();
+
+	try
+	{
+		$counts = Retention::parse ($retention ['spec']);
+
+		Cloud::bucket ();
+
+		$_settings [$key]['counts'] = $counts;
+	}
+	catch (Exception $e)
+	{
+		echo "ERROR > ". $e->getMessage () .". Fix ". (strpos ($e->getMessage (), 'retention') !== FALSE ? $retention ['where'] : Cloud::source ()) .". Nothing was uploaded or deleted". (sizeof ($_settings) > 1 ? ' for the '. $setting ['builds'] .' build(s) that use these settings' : '') ."! \n";
+
+		$_invalid = TRUE;
+	}
 }
-catch (Exception $e)
-{
-	echo "ERROR > ". $e->getMessage () .". Fix the '.env' file". (strpos ($e->getMessage (), 'retention') !== FALSE ? ' ('. (Cloud::value ('S3_RETENTION') !== '' ? 'S3_RETENTION' : 'RETENTION') .')' : '') .". Nothing was uploaded or deleted! \n";
 
-	if ($_daemon)
-		Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - INVALID CLOUD SETTINGS', mailBody ());
+Cloud::select (NULL);
 
-	return;
-}
+if ($_daemon && $_invalid)
+	Mail::singleton ()->send ('Releaser at '. getenv ('SERVER') .' - INVALID CLOUD SETTINGS', mailBody ());
+
+if (!sizeof (array_filter ($_settings, function ($setting) { return $setting ['counts'] !== NULL; }))) return;
 
 $_summary = [];
 
@@ -60,9 +90,17 @@ foreach ($_builds as $_build => $_b)
 {
 	$auto = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;
 
-	$policy = Retention::policy ($auto, $_counts);
+	if ($_daemon && Retention::policy ($auto) === FALSE) continue;
 
-	if ($_daemon && $policy === FALSE) continue;
+	// daqui em diante, tudo o que a Cloud lê e envia é com a configuração desta build
+	Cloud::select ($_b->project ?? NULL);
+
+	$_counts = $_settings [(string) Cloud::scope ()]['counts'] ?? NULL;
+
+	// configuração ausente ou inválida, já acusada acima
+	if ($_counts === NULL) continue;
+
+	$policy = Retention::policy ($auto, $_counts);
 
 	if ($policy === FALSE) $policy = Retention::policy (TRUE, $_counts);
 
@@ -184,6 +222,8 @@ foreach ($_builds as $_build => $_b)
 
 	echo "SUCCESS > All done! Build '". $_build ."': ". $result ['stats']['uploaded'] ." file(s) ". ($_dryRun ? 'would be uploaded' : 'uploaded') .", ". $result ['stats']['kept'] ." kept and ". $result ['stats']['deleted'] ." ". ($_dryRun ? 'would be deleted' : 'deleted') ." in the bucket. \n";
 }
+
+Cloud::select (NULL);
 
 if (sizeof ($_summary))
 {

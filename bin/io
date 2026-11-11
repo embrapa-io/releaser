@@ -142,7 +142,12 @@ ask_yes_no() {
   done
 }
 
+# Projeto cuja configuração própria está sendo perguntada (`io cloud --setup <projeto>`); vazio = a do servidor.
+s3_project=''
+
 # Testa o acesso ao bucket com as respostas (rclone lsd, 5 s, e gravação pelo S3Probe), como o `io check`.
+# A gravação é testada na pasta das builds que vão usar a configuração: as do projeto ($s3_project) ou, na
+# do servidor, as dos projetos sem configuração própria.
 # Credenciais só no ambiente do processo (nada na linha de comando). Imprime OK ou
 # o motivo, sem a chave nem o segredo; devolve o código do rclone (ou 1, se a gravação falhar).
 s3_test() {
@@ -157,7 +162,7 @@ s3_test() {
   if [ $code -eq 0 ]; then
     # listar não prova que a chave grava: abre e aborta um upload multipart (class/S3Probe.php), sem deixar nada no bucket
     out=$(S3_ENDPOINT="$s3_endpoint" S3_BUCKET="$s3_bucket" S3_ACCESS_KEY="$s3_access" S3_SECRET_KEY="$s3_secret" \
-      S3_REGION="$s3_region" php /app/class/S3Probe.php /data 2>&1)
+      S3_REGION="$s3_region" php /app/class/S3Probe.php /data $s3_project 2>&1)
     code=$?
 
     if [ $code -eq 0 ]; then
@@ -342,6 +347,160 @@ cloud_setup() {
 
   echo "${G}Done!${N} The '.env' file in the volume directory shared with the container has been updated."
   echo "The daemon reads it on the next run. Test with 'io check' and 'io cloud --all --dry-run'."
+
+  echo ""
+
+  echo "${D}A project can have its own bucket or key (e.g., a key restricted to the folder of the project),"
+  echo "used by its builds instead of the settings above: io cloud --setup <project>${N}"
+}
+
+# `io cloud --setup <projeto>`: S3 próprio do projeto, gravado em /data/s3/<projeto>.json (modo 600) pelo
+# class/Cloud.php. As builds dele passam a usar esse bucket e essa chave no lugar dos do servidor (S3_* no
+# .env): a orientação é uma chave por projeto, restrita à pasta dele, e um servidor pode hospedar builds de
+# vários projetos. Respondendo não, com arquivo já gravado, oferece removê-lo.
+cloud_setup_project() {
+  local project=$1 known='' has='' name mark line own remove_own server_retention
+
+  if ! [[ $project =~ ^[a-z0-9][a-z0-9-]+[a-z0-9]$ ]]; then
+    echo ""
+
+    echo "${R}Error!${N} Invalid project name '$project'. Use the unix name of the project: io cloud --setup my-project"
+
+    exit 1
+  fi
+
+  while IFS=$'\t' read -r name mark; do
+    if [ "$name" = "$project" ]; then
+      known=1
+
+      [ "$mark" = own ] && has=1
+    fi
+  done < <(php /app/class/Cloud.php projects 2> /dev/null)
+
+  if [ -z "$known" ]; then
+    echo ""
+
+    echo "${R}Error!${N} There is no build of project '$project' on this server. Add it first with 'io install'."
+
+    exit 1
+  fi
+
+  echo ""
+
+  echo "${B}S3 bucket of project '$project'${N}"
+  echo "The builds of this project copy their backups with the settings below, kept in '/data/s3/$project.json',"
+  echo "instead of the ones of the server (S3_* in the '.env' file). Use it when the key is restricted to the"
+  echo "folder of the project in the bucket, or when the project has a bucket of its own."
+  echo "Enter keeps the current value, shown in brackets."
+
+  echo ""
+
+  ask_yes_no own "Should the builds of project '$project' use their own S3 settings?" y
+
+  if [ "$own" = yes ]; then
+    # Retenção do servidor: a sugestão para a do projeto, que só é gravada se for diferente (senão, herda).
+    server_retention=${S3_RETENTION:-${RETENTION:-7/4/3/1}}
+
+    # Sugestões: com arquivo, só o que está nele; sem arquivo, endpoint, bucket e região do servidor (o caso
+    # comum é o mesmo S3 com outra chave), e chave e segredo em branco.
+    S3_ACCESS_KEY=''; S3_SECRET_KEY=''; S3_RETENTION=''
+
+    if [ -n "$has" ]; then
+      S3_ENDPOINT=''; S3_BUCKET=''; S3_REGION=''
+    fi
+
+    while IFS= read -r line; do
+      case "$line" in
+        S3_ENDPOINT=*|S3_BUCKET=*|S3_ACCESS_KEY=*|S3_SECRET_KEY=*|S3_REGION=*|S3_RETENTION=*) printf -v "${line%%=*}" '%s' "${line#*=}" ;;
+      esac
+    done < <(php /app/class/Cloud.php get "$project" 2> /dev/null)
+
+    echo ""
+
+    s3_project=$project
+
+    ask_s3 "$server_retention"
+
+    [ "$s3_retention" = "$server_retention" ] && s3_retention=''
+
+    echo ""
+
+    if S3_ENDPOINT="$s3_endpoint" S3_BUCKET="$s3_bucket" S3_ACCESS_KEY="$s3_access" S3_SECRET_KEY="$s3_secret" \
+      S3_REGION="$s3_region" S3_RETENTION="$s3_retention" php /app/class/Cloud.php save "$project" > /dev/null; then
+      echo "${G}Done!${N} The S3 settings of project '$project' were saved in '/data/s3/$project.json', in the volume"
+      echo "directory shared with the container (readable only by its owner). The daemon reads them on the next run."
+      echo "Test with 'io check' and 'io cloud --all --dry-run'."
+    else
+      echo "${R}Error!${N} Unable to write '/data/s3/$project.json'. Nothing was changed."
+
+      exit 1
+    fi
+  elif [ -n "$has" ]; then
+    ask_yes_no remove_own "Remove the S3 settings of project '$project' (its builds go back to the ones of the server)?" n
+
+    echo ""
+
+    if [ "$remove_own" = yes ] && php /app/class/Cloud.php remove "$project"; then
+      echo "${G}Done!${N} '/data/s3/$project.json' was removed: the builds of project '$project' use the S3 settings of the server."
+    else
+      echo "Nothing was changed."
+    fi
+  else
+    echo ""
+
+    echo "Nothing was changed."
+  fi
+}
+
+# `io cloud --setup` sem projeto: num terminal, e havendo builds no servidor, pergunta antes o que configurar,
+# o servidor (retenção, pasta dos backups e o S3 de todas as builds, no .env) ou o S3 próprio de um dos
+# projetos. Fora de terminal (automação, respostas pela entrada padrão) vai direto ao do servidor, como
+# antes da 1.26.11-4: uma pergunta nova consumiria uma resposta de quem já automatizou o assistente.
+cloud_setup_scope() {
+  local projects=() marks=() name mark i choice
+
+  if [ -n "$TTY" ]; then
+    while IFS=$'\t' read -r name mark; do
+      if [ -n "$name" ]; then
+        projects+=("$name")
+        marks+=("$mark")
+      fi
+    done < <(php /app/class/Cloud.php projects 2> /dev/null)
+  fi
+
+  if [ ${#projects[@]} -eq 0 ]; then
+    cloud_setup
+
+    return
+  fi
+
+  echo ""
+
+  echo "${B}What do you want to set up?${N}"
+
+  echo ""
+
+  echo "  ${B}0${N}  This server: backup retention, backup folder and the S3 bucket of all builds ('.env' file)"
+
+  for i in "${!projects[@]}"; do
+    if [ "${marks[$i]}" = own ]; then mark=" ${D}(already has them)${N}"; else mark=''; fi
+
+    echo "  ${B}$((i + 1))${N}  Project '${projects[$i]}': its own S3 bucket or key, instead of the ones of the server$mark"
+  done
+
+  echo ""
+
+  while :; do
+    ask_value choice "Option" "[0]" 0 '^[0-9]{1,3}$'
+
+    [ "$((10#$choice))" -le ${#projects[@]} ] && break
+  done
+
+  if [ "$((10#$choice))" -eq 0 ]; then
+    cloud_setup
+  else
+    cloud_setup_project "${projects[$((10#$choice - 1))]}"
+  fi
 }
 
 # Cabeçalho, igual ao do menu (class/Menu.php).
@@ -500,12 +659,15 @@ if [ "${1:-}" = "cli" ] && [ "${2:-}" = "--print" ]; then
   exec /usr/local/bin/php /app/run.php "$@"
 fi
 
-# `io cloud --setup`: perguntas da retenção e do bucket S3 numa instalação que já tem o .env.
+# `io cloud --setup [projeto]`: perguntas da retenção e do bucket S3 numa instalação que já tem o .env; com o
+# projeto, só o S3 próprio dele (/data/s3/<projeto>.json).
 if [ "${1:-}" = "cloud" ] && [ "${2:-}" = "--setup" ]; then
-  if [ -n "${JUST_CONFIGURED:-}" ]; then
+  if [ -n "${3:-}" ]; then
+    cloud_setup_project "$3"
+  elif [ -n "${JUST_CONFIGURED:-}" ]; then
     echo "The backup retention and the S3 bucket were just set above; nothing else to set up."
   else
-    cloud_setup
+    cloud_setup_scope
   fi
 
   echo ""

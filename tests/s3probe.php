@@ -3,7 +3,8 @@
  * Testes da assinatura AWS Signature Version 4 do teste de gravação no bucket
  * (class/S3Probe.php), com os exemplos da documentação da AWS ("Signature
  * Calculations for the Authorization Header", exemplos de GET object, GET
- * bucket lifecycle e GET bucket list objects), e da escolha do prefixo. O teste
+ * bucket lifecycle e GET bucket list objects), e da escolha dos diretórios do
+ * teste (por configuração: a do servidor e a própria de cada projeto). O teste
  * contra um bucket real foi feito com Docker (ver o PR do teste de gravação).
  *
  * Uso: php tests/s3probe.php — sai com código 1 se algum caso falhar.
@@ -60,27 +61,69 @@ $b = S3Probe::sign ('POST', 'http://localhost:9001/backup/x?uploads', [], S3Prob
 
 check ('porta faz parte do host assinado', $signature ($a) !== $signature ($b));
 
-// Prefixo: build com auto.cloud tem preferência; sem builds, ''
+// Diretórios do teste de gravação: os das builds que usam a mesma configuração
 $dir = sys_get_temp_dir () .'/s3probe-'. bin2hex (random_bytes (4));
 
 mkdir ($dir .'/builds', 0700, TRUE);
 
-check ('prefixo sem builds', S3Probe::prefix ($dir) === '');
+$build = function ($project, $app, $stage, $cloud = NULL) use ($dir)
+{
+	$b = [ 'project' => $project, 'app' => $app, 'stage' => $stage ];
 
-file_put_contents ($dir .'/builds/alpha_api_beta.json', json_encode ([ 'project' => 'alpha', 'app' => 'api', 'stage' => 'beta' ]));
+	if ($cloud !== NULL) $b ['auto'] = [ 'cloud' => $cloud ];
 
-check ('prefixo com uma build', S3Probe::prefix ($dir) === 'alpha/api/beta');
+	file_put_contents ($dir .'/builds/'. $project .'_'. $app .'_'. $stage .'.json', json_encode ($b));
+};
 
-file_put_contents ($dir .'/builds/beta_web_release.json', json_encode ([ 'project' => 'beta', 'app' => 'web', 'stage' => 'release', 'auto' => [ 'cloud' => TRUE ] ]));
+check ('servidor sem builds: raiz do bucket', S3Probe::prefixes ($dir) === [ '' ]);
 
-check ('prefixo prefere a build com auto.cloud', S3Probe::prefix ($dir) === 'beta/web/release');
+$build ('alpha', 'api', 'beta');
+
+check ('servidor com uma build', S3Probe::prefixes ($dir) === [ 'alpha/api/beta' ]);
+
+$build ('beta', 'web', 'release', TRUE);
+
+check ('servidor: só o projeto com auto.cloud', S3Probe::prefixes ($dir) === [ 'beta/web/release' ]);
 
 file_put_contents ($dir .'/builds/zz_bad_alpha.json', '{');
 
-check ('JSON inválido não quebra', S3Probe::prefix ($dir) === 'beta/web/release');
+check ('JSON inválido não quebra', S3Probe::prefixes ($dir) === [ 'beta/web/release' ]);
 
-array_map ('unlink', glob ($dir .'/builds/*'));
+$build ('beta', 'api', 'alpha', TRUE);
+$build ('gama', 'web', 'release', 'undated');
+
+check ('servidor: um diretório por projeto com a cópia ligada', S3Probe::prefixes ($dir) === [ 'beta/api/alpha', 'gama/web/release' ]);
+
+check ('projeto: build dele com auto.cloud', S3Probe::prefixes ($dir, 'gama') === [ 'gama/web/release' ]);
+check ('projeto: sem auto.cloud, a primeira build dele', S3Probe::prefixes ($dir, 'alpha') === [ 'alpha/api/beta' ]);
+check ('projeto sem build no servidor: a pasta dele', S3Probe::prefixes ($dir, 'delta') === [ 'delta' ]);
+
+// projeto com configuração própria (<data>/s3/<projeto>.json) sai do teste da configuração do servidor
+mkdir ($dir .'/s3', 0700);
+
+file_put_contents ($dir .'/s3/beta.json', '{}');
+
+check ('servidor: projeto com configuração própria fica de fora', S3Probe::prefixes ($dir) === [ 'gama/web/release' ]);
+
+file_put_contents ($dir .'/s3/gama.json', '{}');
+
+check ('servidor: sem a cópia ligada nos que restam, a primeira build deles', S3Probe::prefixes ($dir) === [ 'alpha/api/beta' ]);
+
+file_put_contents ($dir .'/s3/alpha.json', '{}');
+
+check ('servidor: todos com configuração própria, nada a testar', S3Probe::prefixes ($dir) === []);
+
+$none = S3Probe::runAll ('http://127.0.0.1:1', 'backup', 'k', 's', '', []);
+
+check ('runAll sem diretórios: ok, nada testado', $none ['ok'] === TRUE && $none ['tested'] === 0);
+
+$down = S3Probe::runAll ('http://127.0.0.1:1', 'backup', 'chave-de-acesso', 'segredo-do-teste', '', [ 'a/b/c', 'd/e/f' ]);
+
+check ('runAll para na primeira falha', $down ['ok'] === FALSE && $down ['tested'] === 0 && strpos ($down ['message'], 'segredo-do-teste') === FALSE, $down ['message']);
+
+array_map ('unlink', array_merge (glob ($dir .'/builds/*'), glob ($dir .'/s3/*')));
 rmdir ($dir .'/builds');
+rmdir ($dir .'/s3');
 rmdir ($dir);
 
 echo "\n". ($total - $failures) ." of ". $total ." test(s) passed. \n";

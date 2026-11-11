@@ -138,6 +138,9 @@ catch (Exception $e)
 	return;
 }
 
+// o bucket é o da configuração desta build: a própria do projeto (/data/s3/<projeto>.json) ou a do servidor (.env)
+Cloud::select ($_b->project);
+
 $s3 = Cloud::configured ();
 
 if ($s3)
@@ -163,7 +166,7 @@ if ($s3)
 	}
 }
 else
-	echo "INFO > The S3 bucket is not configured ('io cloud --setup'): only the local volume is listed. \n";
+	echo "INFO > The S3 bucket is not configured in ". Cloud::source () ." ('io cloud --setup'): only the local volume is listed. \n";
 
 uasort ($entries, function ($a, $b) { return $b ['ts'] <=> $a ['ts'] ?: strcmp ($b ['name'], $a ['name']); });
 

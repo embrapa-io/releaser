@@ -224,11 +224,21 @@ class Controller
         if (trim ((string) $slice) === '--setup')
             throw new Exception ("'cloud --setup' is interactive and runs in the 'io' entrypoint: docker exec -it releaser io cloud --setup");
 
+        // `io cloud --check [PROJETO]`: só o teste do acesso aos buckets (listagem e gravação), sem builds
+        if (trim ((string) $slice) === '--check')
+        {
+            $_project = $flag !== NULL && trim ((string) $flag) !== '' ? trim ((string) $flag) : NULL;
+
+            require self::PATH .'cloud-check.php';
+
+            return;
+        }
+
         // `io cloud --dry-run` (ou `--list`, `--verify`), sem lista de builds, equivale a `--all --dry-run` etc.
         if (in_array (trim ((string) $slice), [ '--dry-run', '--list', '--verify' ])) { $flag = trim ($slice); $slice = '--all'; }
 
         if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--dry-run', '--list', '--verify' ]))
-            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run', '--list', '--verify' and '--setup'");
+            throw new Exception ("Unknown parameter '". $flag ."'. The only options accepted by 'cloud' are '--dry-run', '--list', '--verify', '--check' and '--setup'");
 
         $_builds = self::getBuilds ($_data, $slice);
 

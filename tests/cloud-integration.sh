@@ -7,8 +7,8 @@
 #   - no Silo, uma chave por projeto, cada uma restrita à pasta do seu projeto (a política da documentação);
 #   - só com a chave de um projeto no .env, a cópia do outro é recusada e o `io check` acusa; com o arquivo do
 #     outro projeto, os dois copiam, cada um com a sua chave; arquivo inválido nunca cai na chave do servidor;
-#     assistente do `bin/io` com as respostas pela entrada padrão; `--list`, `--verify`, `io info`, `io restore
-#     --list` e o daemon.
+#     assistente do `bin/io` com as respostas pela entrada padrão; `io cloud --check [projeto]`, `--list`,
+#     `--verify`, `io info`, `io restore --list` e o daemon.
 #
 #   tests/cloud-integration.sh        (TMPDIR numa pasta que o Docker enxergue; KEEP=1 mantém a fixture)
 set -euo pipefail
@@ -150,6 +150,14 @@ set +e
 io check > "$FIX/out"
 grep -q "ERROR > S3: listing ok, but writing denied" "$FIX/out" && grep -q "backup/$PB/$AB/$S/" "$FIX/out"; check 'check: chave do servidor não grava na pasta do outro projeto' $?
 grep -q "io cloud --setup <project>" "$FIX/out"; check 'check: indica a configuração por projeto' $?
+io cloud --check > "$FIX/out"
+grep -q "ERROR > S3: listing ok, but writing denied" "$FIX/out" && ! grep -q "GitLab" "$FIX/out"; check 'cloud --check: só o S3, mesmo resultado do check' $?
+io cloud --check $PA > "$FIX/out"
+grep -q "has no S3 settings of its own" "$FIX/out" && grep -q "SUCCESS > S3: ok (bucket backup, listing and writing" "$FIX/out"; check 'cloud --check <projeto da chave>: grava na pasta dele' $?
+io cloud --check $PB > "$FIX/out"
+grep -q "Builds of project '$PB' on this server: $PB/$AB@$S (auto.cloud on)" "$FIX/out" && grep -q "ERROR > S3: listing ok, but writing denied" "$FIX/out" && grep -q "io cloud --setup $PB" "$FIX/out"; check 'cloud --check <outro projeto>: recusa na pasta dele, com o --setup' $?
+io cloud --check gama > "$FIX/out"; grep -q "ERROR > There is no build of project 'gama'" "$FIX/out"; check 'cloud --check: projeto sem build' $?
+io cloud --check 'Beta_X' > "$FIX/out"; grep -q "ERROR > Invalid project name" "$FIX/out"; check 'cloud --check: nome inválido' $?
 
 # 2. a cópia do alfa passa e a do beta é recusada, com a indicação do que fazer
 io cloud --all > "$FIX/out"
@@ -164,7 +172,7 @@ setup 'Beta_X' < /dev/null > "$FIX/out"; grep -q "Invalid project name" "$FIX/ou
 # 4. assistente do beta: endpoint e bucket do servidor como sugestão (Enter), chave e segredo do projeto
 printf 'y\n\n\n%s\n%s\n\n\n' "$PB" "$KEY_B" | setup $PB > "$FIX/out"
 grep -q "Testing access to the bucket... .*OK" "$FIX/out"; check 'setup: teste de listagem e gravação na pasta do projeto passa' $?
-grep -q "were saved in '/data/s3/$PB.json'" "$FIX/out"; check 'setup: arquivo do projeto gravado' $?
+grep -q "were saved in '/data/s3/$PB.json'" "$FIX/out" && grep -q "io cloud --check $PB" "$FIX/out"; check 'setup: arquivo do projeto gravado' $?
 ! grep -q "$KEY_B" "$FIX/out"; check 'setup: segredo não aparece na saída' $?
 [ "$(inside "stat -c %a /data/s3/$PB.json")" = "600" ] && [ "$(inside 'stat -c %a /data/s3')" = "700" ]; check 'arquivo do projeto com modo 600, pasta 700' $?
 inside "cat /data/s3/$PB.json" > "$FIX/json"
@@ -180,6 +188,9 @@ io check > "$FIX/out"
 grep -q "settings of the server, S3_\* in the '.env' file" "$FIX/out" && grep -q "settings of project '$PB', /data/s3/$PB.json" "$FIX/out"; check 'check: uma linha por configuração' $?
 [ "$(grep -c 'SUCCESS > S3: ok (bucket backup, listing and writing' "$FIX/out")" = "2" ]; check 'check: as duas configurações gravam' $?
 grep -q "S3 ok (2 settings: server, project '$PB')" "$FIX/out"; check 'check: resumo com as duas' $?
+io cloud --check > "$FIX/out"; [ "$(grep -c 'SUCCESS > S3: ok (bucket backup, listing and writing' "$FIX/out")" = "2" ]; check 'cloud --check: as duas configurações' $?
+io cloud --check $PB > "$FIX/out"
+grep -q "settings of project '$PB', /data/s3/$PB.json" "$FIX/out" && grep -q "SUCCESS > S3: ok" "$FIX/out" && ! grep -q "has no S3 settings of its own" "$FIX/out" && ! grep -q "$KEY_B" "$FIX/out"; check 'cloud --check <projeto>: a configuração própria dele' $?
 
 # 7. cópia: os dois projetos, cada um com a sua chave
 io cloud --all > "$FIX/out"

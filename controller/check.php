@@ -43,7 +43,7 @@ echo "\n";
 if ($check ['cloud'])
 	foreach ($check ['cloud']['scopes'] as $scope)
 	{
-		echo "INFO > S3 bucket '". ($scope ['bucket'] !== '' ? $scope ['bucket'] : '?') ."' at ". ($scope ['endpoint'] !== '' ? $scope ['endpoint'] : '?') ." (". ($scope ['project'] === NULL ? "settings of the server, S3_* in the '.env' file" : "settings of project '". $scope ['project'] ."', ". $scope ['file']) .")... \n";
+		echo "INFO > ". Cloud::describe ($scope) ."... \n";
 
 		echo $prefix [$scope ['status']] ." > S3: ". $scope ['message'] ." \n";
 

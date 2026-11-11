@@ -527,13 +527,13 @@ class Cloud
             self::select (NULL);
 
             if (self::touched ())
-                $scopes [] = self::test ($data, NULL) + [ 'project' => NULL, 'file' => NULL, 'bucket' => self::value ('S3_BUCKET'), 'endpoint' => self::value ('S3_ENDPOINT') ];
+                $scopes [] = self::test ($data, S3Probe::prefixes ($data, NULL)) + self::described ();
 
             foreach (self::projects () as $project)
             {
                 self::select ($project);
 
-                $scopes [] = self::test ($data, $project) + [ 'project' => $project, 'file' => self::file ($project), 'bucket' => self::value ('S3_BUCKET'), 'endpoint' => self::value ('S3_ENDPOINT') ];
+                $scopes [] = self::test ($data, S3Probe::prefixes ($data, $project)) + self::described ();
             }
         }
         catch (\Throwable $e)
@@ -566,11 +566,58 @@ class Cloud
     }
 
     /**
-     * Teste de UMA configuração (a selecionada): listar (`rclone lsd`, 5 s) e
-     * gravar (S3Probe) no diretório das builds de $data que a usam.
+     * Teste da configuração que as builds de $project usam, a própria ou a do
+     * servidor, com a gravação na pasta DELE (`io cloud --check <projeto>`). Na do
+     * servidor, o check () só testa a pasta dos projetos com a cópia ligada; aqui,
+     * a do projeto pedido, ligada ou não. NULL sem nenhuma configuração. Mesmo
+     * formato de um item de 'scopes' do check (). Nunca lança.
      */
-    static private function test ($data, $project)
+    static public function checkProject ($data, $project)
     {
+        $selected = self::$project;
+
+        try
+        {
+            self::select ($project);
+
+            if (self::scope () === NULL && !self::touched ()) return NULL;
+
+            return self::test ($data, S3Probe::prefixes ($data, $project), $project) + self::described ();
+        }
+        catch (\Throwable $e)
+        {
+            return self::result ('ERROR', self::mask ($e->getMessage ()), [ 'alert' => TRUE, 'project' => NULL, 'file' => NULL, 'bucket' => '', 'endpoint' => '' ]);
+        }
+        finally
+        {
+            self::$project = $selected;
+        }
+    }
+
+    /** Linha que apresenta uma configuração testada (item de 'scopes'), no `io check` e no `io cloud --check`. */
+    static public function describe ($scope)
+    {
+        return "S3 bucket '". ($scope ['bucket'] !== '' ? $scope ['bucket'] : '?') ."' at ". ($scope ['endpoint'] !== '' ? $scope ['endpoint'] : '?')
+            ." (". ($scope ['project'] === NULL ? "settings of the server, S3_* in the '.env' file" : "settings of project '". $scope ['project'] ."', ". $scope ['file']) .")";
+    }
+
+    // Identificação da configuração selecionada, para os itens de 'scopes'.
+    static private function described ()
+    {
+        $project = self::scope ();
+
+        return [ 'project' => $project, 'file' => $project !== NULL ? self::file ($project) : NULL, 'bucket' => self::value ('S3_BUCKET'), 'endpoint' => self::value ('S3_ENDPOINT') ];
+    }
+
+    /**
+     * Teste de UMA configuração (a selecionada): listar (`rclone lsd`, 5 s) e
+     * gravar (S3Probe) nos diretórios $prefixes, os das builds que a usam. $for:
+     * o projeto para o qual a do servidor está sendo testada, se for um só.
+     */
+    static private function test ($data, array $prefixes, $for = NULL)
+    {
+        $project = self::scope ();
+
         $missing = self::missing ();
 
         if (sizeof ($missing))
@@ -595,10 +642,10 @@ class Cloud
         {
             // listar não prova que a chave grava: abre e aborta um upload multipart (S3Probe), sem deixar nada no bucket
             // (a do servidor é testada na pasta de cada projeto com a cópia ligada: a chave pode ser de um só deles)
-            $probe = S3Probe::runAll (self::value ('S3_ENDPOINT'), $bucket, self::value ('S3_ACCESS_KEY'), self::value ('S3_SECRET_KEY'), self::value ('S3_REGION'), S3Probe::prefixes ($data, $project));
+            $probe = S3Probe::runAll (self::value ('S3_ENDPOINT'), $bucket, self::value ('S3_ACCESS_KEY'), self::value ('S3_SECRET_KEY'), self::value ('S3_REGION'), $prefixes);
 
             if (!$probe ['ok'])
-                return self::result ('ERROR', 'listing ok, but '. $probe ['message'] . ($project === NULL && sizeof (S3Probe::builds ($data)) ? " (if the key is of another project, run 'io cloud --setup <project>' for this one)" : ''), [ 'alert' => TRUE ]);
+                return self::result ('ERROR', 'listing ok, but '. $probe ['message'] . ($project === NULL && sizeof (S3Probe::builds ($data)) ? " (if the key is of another project, run 'io cloud --setup ". ($for !== NULL ? $for : '<project>') ."' for this one)" : ''), [ 'alert' => TRUE ]);
 
             $what = $probe ['tested'] === 0 ? 'listing ok; writing not tested: no build uses these settings' : ($probe ['tested'] === 1 ? 'listing and writing' : 'listing, and writing in '. $probe ['tested'] .' projects');
 

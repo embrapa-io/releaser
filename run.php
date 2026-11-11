@@ -180,18 +180,20 @@ $_operations = [
 		'Copy backups to an S3 bucket (and rotate them)',
 		'Controller::cloud',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list | --verify] | --setup [PROJECT]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list | --verify] | --check [PROJECT] | --setup [PROJECT]',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
 			'proj-b/web@release --dry-run',
 			'proj-b/web@release --list',
 			'proj-b/web@release --verify',
+			'--check',
+			'--check proj-a',
 			'--setup',
 			'--setup proj-a'
 		],
 		'maintenance',
-		'Copy the backup files of builds to an S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO), in <bucket>/<project>/<app>/<stage>/. The bucket is set once for the server in the \'.env\' file (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and, optionally, S3_REGION); the builds of a project with its own settings, in /data/s3/<project>.json (e.g., a key restricted to the folder of the project), use them instead. Only uploads what is missing in the bucket (never a mirror: nothing is deleted from it because it left the volume) and then rotates the files in the bucket with S3_RETENTION (\'D/W/M/Y\'; default: RETENTION, or 7/4/3/1). With --dry-run, only shows what would be uploaded and deleted; with --list, only lists the files of the build in the bucket; with --verify, compares by hash (MD5) the files that are in both the volume and the bucket, without uploading or deleting anything. \'io cloud --setup\' asks for the bucket settings and the retention of the server and writes them to the \'.env\' file; \'io cloud --setup PROJECT\' asks for the bucket settings of one project and writes them to /data/s3/<project>.json.'
+		'Copy the backup files of builds to an S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO), in <bucket>/<project>/<app>/<stage>/. The bucket is set once for the server in the \'.env\' file (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and, optionally, S3_REGION); the builds of a project with its own settings, in /data/s3/<project>.json (e.g., a key restricted to the folder of the project), use them instead. Only uploads what is missing in the bucket (never a mirror: nothing is deleted from it because it left the volume) and then rotates the files in the bucket with S3_RETENTION (\'D/W/M/Y\'; default: RETENTION, or 7/4/3/1). With --dry-run, only shows what would be uploaded and deleted; with --list, only lists the files of the build in the bucket; with --verify, compares by hash (MD5) the files that are in both the volume and the bucket, without uploading or deleting anything. \'io cloud --check\' only tests the access to the bucket of each settings in use (listing and writing, leaving nothing there), as \'io check\' does; \'io cloud --check PROJECT\' tests the settings used by the builds of one project, writing in its folder. \'io cloud --setup\' asks for the bucket settings and the retention of the server and writes them to the \'.env\' file; \'io cloud --setup PROJECT\' asks for the bucket settings of one project and writes them to /data/s3/<project>.json.'
 	),
 	'health' => new Operation (
 		'Report service health to the platform',

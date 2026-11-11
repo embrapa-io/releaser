@@ -1,4 +1,4 @@
-# _Bucket_ S3 por projeto — texto para `site/docs/releaser.md` e `site/docs/s3.md`
+# _Bucket_ S3 por projeto e `io` com o _container_ fora do ar — texto para `site/docs/releaser.md` e `site/docs/s3.md`
 
 Este arquivo traz o texto **pronto para transpor** à documentação pública (`site/docs/releaser.md` e `site/docs/s3.md` do monorepo `embrapa.io`), a partir da versão **1.26.11-4**. Só deve ir para o site depois que a versão estiver no Docker Hub.
 
@@ -18,7 +18,18 @@ Na linha de uso do comando, acrescentar `--verify` (se ainda faltar) e a forma d
 
 ```bash
 docker exec -it releaser io cloud [BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run | --list | --verify]
+docker exec -it releaser io cloud --check [PROJETO]
 docker exec -it releaser io cloud --setup [PROJETO]
+```
+
+E, entre os exemplos:
+
+```bash
+# testa o acesso ao bucket (listagem e gravação) de cada configuração em uso, sem copiar nada
+docker exec -it releaser io cloud --check
+
+# testa a configuração que as builds de um projeto usam, gravando na pasta dele
+docker exec -it releaser io cloud --check meu-projeto
 ```
 
 ### Subseção nova, logo depois de "Configuração do _bucket_"
@@ -53,6 +64,20 @@ A configuração fica em `s3/<projeto>.json`, no diretório de configuração do
 | `secret_key` | sim | `S3_SECRET_KEY` |
 | `region` | não | `S3_REGION` (padrão `auto`) |
 | `retention` | não | `S3_RETENTION`; se ausente, vale a do servidor |
+
+Para conferir, a qualquer momento, qual configuração as _builds_ de um projeto usam e se ela grava na pasta dele:
+
+```bash
+docker exec -it releaser io cloud --check meu-projeto
+```
+
+```
+INFO > Builds of project 'meu-projeto' on this server: meu-projeto/api@release (auto.cloud on), meu-projeto/web@release (auto.cloud off).
+INFO > S3 bucket 'backup' at https://s3.cnpxx.embrapa.br (settings of project 'meu-projeto', /data/s3/meu-projeto.json)...
+SUCCESS > S3: ok (bucket backup, listing and writing, 171 ms)
+```
+
+Quando o projeto não tem configuração própria, a saída diz que as _builds_ dele usam a do servidor e testa a gravação na pasta do projeto com a chave do `.env`. Sem o nome do projeto, `io cloud --check` testa cada configuração em uso: é a parte de S3 do `io check`, sem o GitLab nem a versão.
 
 Regras:
 
@@ -103,6 +128,24 @@ Acrescentar, onde se fala do _bucket_:
 
 > O _bucket_ lido é o da configuração da _build_: a do projeto, se houver, ou a do servidor.
 
+### Seção "O comando `io` no servidor" (`#cli`)
+
+Acrescentar, depois do item que explica como o comando procura o _container_:
+
+> A partir da versão `1.26.11-4`, quando o _container_ do **Releaser** não está no ar, o comando `io` diz por quê e mostra como trazê-lo de volta. Se o _container_ está **parado**, mostra o `docker start`. Se foi **removido**, mostra o `docker run` que o recria como ele era quando o comando foi gerado: mesmo nome, mesmas pastas montadas, mesma política de reinício, `--add-host`, `--dns` e rede, e a imagem pela **_tag_ exata da versão** que estava em uso (e não `embrapa/releaser` sem _tag_, que num servidor já atualizado pelo `io upgrade` traria de volta a versão da instalação). Em terminal, ele pergunta se deve executar o comando e, com a resposta sim, segue com o que foi pedido:
+>
+> ```
+> $ io info
+> io: the Releaser container 'releaser' was not found on this server (removed?). To create it again, as it
+> was when this command was generated (version 1.26.11-4):
+>   docker run -d --name releaser -v /root/releaser:/data -v /var/run/docker.sock:/var/run/docker.sock --restart always embrapa/releaser:1.26.11-4
+> Create it now? (y/N):
+> ```
+>
+> No _cron_, em _scripts_ e em _pipes_ nada é perguntado nem executado: o comando só mostra a mensagem e termina com erro (código 125), como antes. Variáveis de ambiente passadas na criação do _container_ (`-e`) não entram no comando mostrado, porque o _script_ é legível por qualquer usuário do servidor: os nomes delas aparecem num aviso, para serem acrescentadas à mão. Em Docker Swarm, quem recria o _container_ é o serviço. O comando gravado é o do momento em que o `io` foi gerado ou atualizado (a cada versão nova do **Releaser**, ou com `io cli`); se o _container_ for recriado à mão com outras opções, rode `io cli` para atualizá-lo.
+
+Trocar, no item da procura do _container_, "e falha com mensagem clara se achar nenhum ou mais de um" por "e, se não achar nenhum, mostra como trazer o _container_ de volta (abaixo); com mais de um, pede o nome em `RELEASER_CONTAINER`".
+
 ---
 
 ## Parte 2 — `site/docs/s3.md`
@@ -128,6 +171,12 @@ Trocar o parágrafo do teste ("O assistente testa a **listagem** e a **gravaçã
 > O assistente testa a **listagem** e a **gravação** antes de salvar. O teste de gravação abre e cancela um _upload multipart_ no diretório de uma _build_ do projeto, sem deixar nada no _bucket_: um arquivo de teste comum ficaria retido pelo Object Lock por 14 dias. A configuração fica em `s3/meu-projeto.json`, no diretório do **Releaser**, e vale para todas as _builds_ do projeto no servidor (veja [Configuração por projeto]({{ site.baseurl }}/docs/releaser#cloud-projects)). Repita o comando para cada projeto do servidor.
 >
 > Num servidor com _builds_ de um projeto só, tanto faz usar `io cloud --setup` (sem o nome), que grava a chave no `.env`, para todas as _builds_.
+
+Na lista de comandos do "Depois:", acrescentar no começo:
+
+```bash
+io cloud --check <projeto>                     # a configuração do projeto lista e grava na pasta dele?
+```
 
 Na frase final da seção ("O `io check`, e o `check` diário por e-mail, voltam a testar listagem e gravação todo dia."), acrescentar: "na pasta de cada projeto".
 

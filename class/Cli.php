@@ -21,6 +21,18 @@
  * /usr/local/bin só leitura), avisa uma vez por versão (marca em /data/.cli)
  * com o comando manual. Chamadas com a mesma versão, ou sem a variável (docker
  * exec direto, cron interno, daemon), não fazem nada.
+ *
+ * Contêiner fora do ar (desde a 1.26.11-4): antes, o wrapper só dizia "not found
+ * or not running". Agora distingue o contêiner PARADO (mostra e oferece o
+ * `docker start`) do REMOVIDO (mostra e oferece o `docker run` que o recria).
+ * O `docker run` é montado aqui, na geração do wrapper, a partir do inspect do
+ * próprio contêiner (recreate ()): nome, montagens, política de reinício,
+ * --add-host, --dns, rede e a imagem pela TAG EXATA da versão em execução. Nunca
+ * `embrapa/releaser` sem tag: num servidor atualizado pelo `io upgrade`, o
+ * `latest` local é o da instalação, e recriar por ele rebaixaria a versão. A
+ * pergunta só é feita em terminal; em cron, scripts e pipes, o wrapper mostra o
+ * comando e sai com 125, como antes. Swarm e Docker Compose ficam de fora (o
+ * serviço ou o arquivo do compose é que recria).
  */
 class Cli
 {
@@ -70,9 +82,15 @@ class Cli
         return strpos ($message, 'mkdir '. self::TARGET .': read-only file system') !== FALSE;
     }
 
-    /** O script do wrapper (POSIX sh), com a versão e o nome da imagem desta instalação. */
-    static public function script ()
+    /**
+     * O script do wrapper (POSIX sh), com a versão e o nome da imagem desta
+     * instalação e o comando que recria o contêiner ($recreate; NULL = o do
+     * contêiner em execução, ver recreate ()).
+     */
+    static public function script ($recreate = NULL)
     {
+        if ($recreate === NULL) $recreate = self::recreate ();
+
         $script = <<<'SH'
 #!/bin/sh
 __MARK__
@@ -87,9 +105,31 @@ __MARK__
 # Releaser itself when the image changes. Do not edit. To regenerate by hand:
 #   docker exec releaser io cli --print | sudo tee /usr/local/bin/io > /dev/null && sudo chmod +x /usr/local/bin/io
 # Set RELEASER_CONTAINER if the Releaser container is not named 'releaser'.
+#
+# If the container is stopped or was removed, this script shows how to bring it
+# back and, on a terminal, offers to do it (never from cron or scripts).
 
 name="${RELEASER_CONTAINER:-releaser}"
 image="__IMAGE__"
+
+# The container as it was when this script was generated: its name and the
+# command that creates it again (empty when it is not a plain 'docker run').
+created=__CREATED__
+recreate=__RECREATE__
+note=__NOTE__
+
+# Asks on the terminal; without one (cron, scripts, pipes), the answer is no.
+confirm() {
+  [ -t 0 ] && [ -t 2 ] || return 1
+
+  printf '%s (y/N): ' "$1" >&2
+
+  read -r answer || return 1
+
+  case "$answer" in y|Y|yes|Yes|YES) return 0 ;; esac
+
+  return 1
+}
 
 if ! err=$(docker version --format '{{.Server.Version}}' 2>&1 > /dev/null); then
   err=$(printf '%s\n' "$err" | head -n 1)
@@ -109,9 +149,49 @@ if [ "$(docker inspect --format '{{.State.Running}}' "$name" 2> /dev/null)" != "
   [ -z "$found" ] && found=$(docker ps --format '{{.ID}} {{.Image}}' | awk -v img="$image" '$2 == img || index($2, img ":") == 1 { print $1 }')
 
   if [ -z "$found" ]; then
-    echo "io: Releaser container '$name' not found or not running (set RELEASER_CONTAINER to its name)" >&2
+    status=$(docker inspect --type container --format '{{.State.Status}}' "$name" 2> /dev/null)
 
-    exit 125
+    if [ -n "$status" ]; then
+      echo "io: the Releaser container '$name' exists, but it is not running (status: $status). To start it:" >&2
+      echo "  docker start $name" >&2
+
+      confirm "Start it now?" || exit 125
+
+      docker start "$name" > /dev/null || exit 125
+    elif [ -n "$recreate" ] && [ "$name" = "$created" ]; then
+      echo "io: the Releaser container '$name' was not found on this server (removed?). To create it again, as it" >&2
+      echo "was when this command was generated (version __VERSION__):" >&2
+      echo "  $recreate" >&2
+
+      [ -n "$note" ] && echo "$note" >&2
+
+      confirm "Create it now?" || exit 125
+
+      sh -c "$recreate" > /dev/null || exit 125
+    else
+      echo "io: Releaser container '$name' not found or not running (set RELEASER_CONTAINER to its name)" >&2
+
+      exit 125
+    fi
+
+    # waits for the container to be up before running the command in it
+    tries=0
+
+    while [ "$(docker inspect --format '{{.State.Running}}' "$name" 2> /dev/null)" != "true" ]; do
+      tries=$((tries + 1))
+
+      if [ "$tries" -gt 15 ]; then
+        echo "io: the Releaser container '$name' did not stay up; see: docker logs $name" >&2
+
+        exit 125
+      fi
+
+      sleep 1
+    done
+
+    echo "io: the Releaser container '$name' is running." >&2
+
+    found=$name
   fi
 
   if [ "$(printf '%s\n' "$found" | wc -l)" -gt 1 ]; then
@@ -131,7 +211,156 @@ if [ -t 0 ] && [ -t 1 ]; then tty=-it; else tty=-i; fi
 exec docker exec $tty -e "IO_WRAPPER_VERSION=__VERSION__" "$name" io "$@"
 SH;
 
-        return str_replace ([ '__MARK__', '__VERSION__', '__IMAGE__' ], [ self::MARK, self::version (), self::imageName () ], $script) ."\n";
+        return str_replace (
+            [ '__MARK__', '__VERSION__', '__IMAGE__', '__CREATED__', '__RECREATE__', '__NOTE__' ],
+            [ self::MARK, self::version (), self::imageName (), self::sh ($recreate ['name']), self::sh ($recreate ['command']), self::sh ($recreate ['note']) ],
+            $script
+        ) ."\n";
+    }
+
+    /**
+     * O `docker run` que recria o contêiner do Releaser em execução, para o
+     * wrapper mostrar e oferecer quando o contêiner tiver sido removido (ver
+     * command ()). Tudo vazio quando não dá para saber. Nunca lança.
+     */
+    static public function recreate ()
+    {
+        $none = [ 'name' => '', 'command' => '', 'note' => '' ];
+
+        try
+        {
+            $id = BackupVolume::container ();
+
+            if ($id === FALSE) return $none;
+
+            exec (self::DOCKER .' inspect --type container '. escapeshellarg ($id) .' 2> /dev/null', $output, $return);
+
+            $inspect = json_decode (implode ("\n", $output));
+
+            if ($return !== 0 || !is_array ($inspect) || !isset ($inspect [0]) || !is_object ($inspect [0])) return $none;
+
+            // variáveis que a imagem já define, para separar as que foram passadas na criação do contêiner
+            $defined = NULL;
+
+            unset ($output);
+
+            exec (self::DOCKER .' inspect --type image --format '. escapeshellarg ('{{json .Config.Env}}') .' '. escapeshellarg ((string) ($inspect [0]->Image ?? '')) .' 2> /dev/null', $output, $return);
+
+            $env = json_decode ((string) ($output [0] ?? ''), TRUE);
+
+            if ($return === 0 && is_array ($env)) $defined = $env;
+
+            return self::command ($inspect [0], self::version (), $defined);
+        }
+        catch (\Throwable $e)
+        {
+            return $none;
+        }
+    }
+
+    /**
+     * Monta, do inspect de um contêiner ($container, stdClass), o `docker run`
+     * que o recria: ['name' => nome, 'command' => comando, 'note' => aviso]. Pura
+     * (testes em tests/cli.php).
+     *
+     *   - nome, montagens (HostConfig.Binds, na ordem), política de reinício,
+     *     --add-host, --dns e rede que não seja a padrão;
+     *   - imagem pela tag exata de $version quando ela é de uma versão publicada
+     *     (MAJOR.AA.M-N); em desenvolvimento, a imagem como o contêiner a nomeia;
+     *   - variáveis de ambiente passadas na criação ($imageEnv: as que a imagem
+     *     define; NULL = desconhecidas) ficam FORA do comando, porque o script é
+     *     legível por qualquer usuário do servidor: só os nomes vão para o aviso.
+     *
+     * Tudo vazio para contêiner de serviço do Swarm ou do Docker Compose (quem
+     * recria é o serviço ou o arquivo do compose) e sem /data ou sem o socket do
+     * Docker entre as montagens.
+     */
+    static public function command ($container, $version, array $imageEnv = NULL)
+    {
+        $none = [ 'name' => '', 'command' => '', 'note' => '' ];
+
+        $labels = (array) ($container->Config->Labels ?? []);
+
+        if (isset ($labels ['com.docker.swarm.service.name']) || isset ($labels ['com.docker.compose.project'])) return $none;
+
+        $name = ltrim ((string) ($container->Name ?? ''), '/');
+
+        if (!preg_match ('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $name)) return $none;
+
+        $binds = array_values (array_filter ((array) ($container->HostConfig->Binds ?? []), 'is_string'));
+
+        $targets = array_map (function ($bind) { return explode (':', $bind) [1] ?? ''; }, $binds);
+
+        if (!in_array ('/data', $targets, TRUE) || !in_array ('/var/run/docker.sock', $targets, TRUE)) return $none;
+
+        $args = [ 'docker', 'run', '-d', '--name', $name ];
+
+        foreach ($binds as $bind) { $args [] = '-v'; $args [] = $bind; }
+
+        $policy = (string) ($container->HostConfig->RestartPolicy->Name ?? '');
+
+        $retries = intval ($container->HostConfig->RestartPolicy->MaximumRetryCount ?? 0);
+
+        if (!empty ($container->HostConfig->AutoRemove))
+            $args [] = '--rm';
+        elseif ($policy !== '' && $policy !== 'no')
+        {
+            $args [] = '--restart';
+            $args [] = $policy . ($policy === 'on-failure' && $retries > 0 ? ':'. $retries : '');
+        }
+
+        foreach ((array) ($container->HostConfig->ExtraHosts ?? []) as $host)
+            if (is_string ($host) && $host !== '') { $args [] = '--add-host'; $args [] = $host; }
+
+        foreach ((array) ($container->HostConfig->Dns ?? []) as $dns)
+            if (is_string ($dns) && $dns !== '') { $args [] = '--dns'; $args [] = $dns; }
+
+        $mode = (string) ($container->HostConfig->NetworkMode ?? 'default');
+
+        if (!in_array ($mode, [ '', 'default', 'bridge' ], TRUE)) { $args [] = '--network'; $args [] = $mode; }
+
+        $configured = (string) ($container->Config->Image ?? '');
+
+        // repositório sem a tag nem o digest; a tag é o que vem depois do último ':' que esteja depois da
+        // última '/' (o ':' de 'registro:5000/io/releaser' é da porta). Imagem dada pelo ID não tem repositório.
+        $repository = preg_replace ('/@sha256:[0-9a-f]+$/', '', $configured);
+
+        $colon = strrpos ($repository, ':');
+
+        if ($colon !== FALSE && $colon > intval (strrpos ($repository, '/'))) $repository = substr ($repository, 0, $colon);
+
+        if (preg_match ('/^(sha256:)?[0-9a-f]{12,64}$/', $configured) || !preg_match ('/^[a-z0-9][a-z0-9._\/:-]*[a-z0-9]$/', $repository)) $repository = self::IMAGE;
+
+        if (preg_match ('/^[0-9]+\.[0-9]{2}\.[0-9]+-[0-9]+$/', (string) $version))
+            $args [] = $repository .':'. $version;
+        else
+            $args [] = $configured !== '' ? $configured : self::IMAGE;
+
+        $note = '';
+
+        if ($imageEnv !== NULL)
+        {
+            $names = function ($list) { return array_map (function ($pair) { return explode ('=', (string) $pair, 2) [0]; }, (array) $list); };
+
+            $extra = array_values (array_diff ($names ($container->Config->Env ?? []), $names ($imageEnv)));
+
+            if (sizeof ($extra))
+                $note = 'It was created with environment variables that are not in the command above; add each one with -e NAME=value: '. implode (', ', $extra);
+        }
+
+        return [ 'name' => $name, 'command' => implode (' ', array_map ([ self::class, 'quote' ], $args)), 'note' => $note ];
+    }
+
+    // Argumento para a linha de comando mostrada: sem aspas quando não precisa, para ficar legível.
+    static private function quote ($arg)
+    {
+        return preg_match ('/^[A-Za-z0-9_.,:\/@=+-]+$/', $arg) ? $arg : escapeshellarg ($arg);
+    }
+
+    // Literal de sh entre aspas simples, para os valores gravados no script.
+    static private function sh ($value)
+    {
+        return "'". str_replace ("'", "'\\''", (string) $value) ."'";
     }
 
     /**

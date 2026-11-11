@@ -346,7 +346,7 @@ cloud_setup() {
   echo ""
 
   echo "${G}Done!${N} The '.env' file in the volume directory shared with the container has been updated."
-  echo "The daemon reads it on the next run. Test with 'io check' and 'io cloud --all --dry-run'."
+  echo "The daemon reads it on the next run. Test with 'io cloud --check' and 'io cloud --all --dry-run'."
 
   echo ""
 
@@ -429,7 +429,7 @@ cloud_setup_project() {
       S3_REGION="$s3_region" S3_RETENTION="$s3_retention" php /app/class/Cloud.php save "$project" > /dev/null; then
       echo "${G}Done!${N} The S3 settings of project '$project' were saved in '/data/s3/$project.json', in the volume"
       echo "directory shared with the container (readable only by its owner). The daemon reads them on the next run."
-      echo "Test with 'io check' and 'io cloud --all --dry-run'."
+      echo "Test with 'io cloud --check $project' and 'io cloud --all --dry-run'."
     else
       echo "${R}Error!${N} Unable to write '/data/s3/$project.json'. Nothing was changed."
 

@@ -24,6 +24,14 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	// Parada com `io stop`: o core já sabe e não deve receber os contêineres parados como saúde (nem varredura de CVEs).
+	if (Lifecycle::isStopped ($_data, $_b))
+	{
+		if (!$_daemon) echo "INFO > ". $_build .": stopped with 'io stop', nothing to report (use 'io restart' to bring it back). \n";
+
+		continue;
+	}
+
 	$namespace = implode ('_', [ $_b->project, $_b->app, $_b->stage ]);
 
 	try

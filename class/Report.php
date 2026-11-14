@@ -49,7 +49,8 @@ class Report
 
     /**
      * Envia um lote de builds. Cada item: ['project', 'app', 'stage'] e, opcionais,
-     * 'version' (string), 'services' (serviço => campos) e 'cve' (['services' => ...]).
+     * 'version' (string), 'services' (serviço => campos), 'cve' (['services' => ...]) e
+     * 'state' ('stopped' no `io stop`, 'running' no `io restart` de uma build parada).
      * Devolve TRUE se o core aceitou todas as builds do lote.
      */
     static public function send (array $items, $quiet = FALSE)
@@ -66,7 +67,7 @@ class Report
         $sent = [];
 
         // sinais enviados por build, com o nome que o `io info` mostra (services -> health)
-        $names = [ 'version' => 'version', 'services' => 'health', 'cve' => 'cve' ];
+        $names = [ 'version' => 'version', 'services' => 'health', 'cve' => 'cve', 'state' => 'state' ];
 
         foreach ($items as $item)
             $sent [$item ['project'] .'/'. $item ['app'] .'@'. $item ['stage']] = array_values (array_map (function ($k) use ($names) { return $names [$k]; }, array_intersect (array_keys ($item), array_keys ($names))));
@@ -172,6 +173,38 @@ class Report
     }
 
     /**
+     * DELETE /releaser/build/:p/:a/:s — o core esquece a build (`io remove`). Nunca lança: devolve
+     * ['ok' => bool, 'forgotten' => bool, 'message' => texto para o WARNING quando não deu certo].
+     */
+    static public function forget ($project, $app, $stage)
+    {
+        $path = 'releaser/build/'. rawurlencode ($project) .'/'. rawurlencode ($app) .'/'. rawurlencode ($stage) .'?server='. rawurlencode (trim ((string) getenv ('SERVER')));
+
+        try
+        {
+            $response = self::client ()->request ('DELETE', $path);
+        }
+        catch (Exception $e)
+        {
+            return [ 'ok' => FALSE, 'forgotten' => FALSE, 'message' => "Unable to reach '". Controller::apiUrl () ."': ". $e->getMessage () ];
+        }
+
+        $status = $response->getStatusCode ();
+
+        $data = json_decode ((string) $response->getBody ());
+
+        if ($status !== 200 || !is_object ($data))
+            return [ 'ok' => FALSE, 'forgotten' => FALSE, 'message' => "The core answered HTTP ". $status .": ". self::reason ($status, $data) ];
+
+        // O último relato guardado para o `io info` deixa de valer: a build não existe mais para o core.
+        $file = self::dir () . DIRECTORY_SEPARATOR . $project .'_'. $app .'_'. $stage .'.json';
+
+        if (file_exists ($file)) unlink ($file);
+
+        return [ 'ok' => TRUE, 'forgotten' => !empty ($data->forgotten), 'message' => '' ];
+    }
+
+    /**
      * GET /releaser/build/:p/:a/:s — o que a plataforma sabe (ou cria) para a build.
      * Lança exceção com mensagem legível em qualquer falha.
      */
@@ -209,6 +242,7 @@ class Report
             'IS_NOT_DEVELOPER' => "the owner of the GITLAB_TOKEN is not a Developer of this app's repository",
             'INEXISTENT_PROJECT' => "project not found in the platform",
             'INEXISTENT_APP' => "app not found in the platform",
+            'BUILD_ON_PLATFORM_CLUSTER' => "this stage is deployed by the platform in a cluster, not by a Releaser",
             'FIELD_EMPTY_OR_INVALID' => "invalid field". (is_object ($data) && isset ($data->info) ? ' ('. $data->info .')' : '')
         ];
 

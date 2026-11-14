@@ -70,13 +70,24 @@ foreach ($_builds as $_build => $_b)
 
 	echo "SUCCESS > All done! Version '". $_last ."' of build '". $_build ."' was successfully ". ($_upgrade ? "upgraded and restarted" : "restarted") ."! \n";
 
-	if ($_upgrade) $upgraded [$_build] = $_b;
+	// Build que estava parada (`io stop`): volta aos daemons, o core tira a marca de parada e as CVEs são varridas já,
+	// porque o core as apagou na parada.
+	$wasStopped = Lifecycle::clearStopped ($_data, $_b);
+
+	if ($wasStopped && self::stats ($_b)->version)
+	{
+		echo "INFO > Reporting to the core that the build is running again... \n";
+
+		Report::send ([ [ 'project' => $_b->project, 'app' => $_b->app, 'stage' => $_b->stage, 'version' => $_last, 'state' => 'running' ] ]);
+	}
+
+	if ($_upgrade || $wasStopped) $upgraded [$_build] = $_b;
 }
 
-if (!$_upgrade || !sizeof ($upgraded)) return;
+if (!sizeof ($upgraded)) return;
 
-// Depois do upgrade, a varredura de CVEs (o mesmo que `io cve <builds>`) e o relato ao core, para o alerta de
-// CVE da plataforma enxergar a correção no mesmo ciclo, sem esperar o `cve:daemon` da próxima hora.
+// Depois do upgrade (ou da volta de uma build parada), a varredura de CVEs (o mesmo que `io cve <builds>`) e o relato
+// ao core, para o alerta de CVE da plataforma enxergar o estado no mesmo ciclo, sem esperar o `cve:daemon` da próxima hora.
 $_builds = [];
 
 foreach ($upgraded as $_build => $_b)
@@ -95,6 +106,6 @@ if (getenv ('ORCHESTRATOR') === 'DockerSwarm')
 	sleep (30);
 }
 
-echo "INFO > Scanning the upgraded build(s) for CVEs and reporting to the core... \n";
+echo "INFO > Scanning the ". ($_upgrade ? "upgraded" : "restarted") ." build(s) for CVEs and reporting to the core... \n";
 
 require self::PATH .'cve.php';

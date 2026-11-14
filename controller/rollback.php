@@ -246,6 +246,9 @@ try
 
 	file_put_contents ($rollback, $tag ['name'], LOCK_EX);
 
+	// Versão no ar: a build deixa de estar parada (`io stop`) e volta aos daemons de saúde e de CVEs.
+	Lifecycle::clearStopped ($_data, $_b);
+
 	echo "SUCCESS > All done! Version '". $tag ['name'] ."' of build '". $_build ."' is DEPLOYED! \n";
 }
 catch (Exception $e)

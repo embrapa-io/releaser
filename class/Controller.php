@@ -162,6 +162,27 @@ class Controller
         require self::PATH .'stop.php';
     }
 
+    /**
+     * `io remove <builds> [--yes]`: tira a build deste servidor e da plataforma sem apagar dados (controller/remove.php).
+     * Sem `--all`: cada build tem de ser nomeada. Pede confirmação; fora de terminal, exige `--yes`.
+     */
+    static public function remove ($slice, $flag = NULL)
+    {
+        global $_data;
+
+        if (trim ((string) $slice) === '--all')
+            throw new Exception ("'remove' does not accept '--all': name each build to remove (e.g.: io remove proj-a/app-1@beta)");
+
+        if ($flag !== NULL && trim ((string) $flag) !== '--yes')
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'remove' is '--yes'");
+
+        $_yes = $flag !== NULL;
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        require self::PATH .'remove.php';
+    }
+
     static public function restart ($slice, $flag = NULL)
     {
         global $_daemon, $_data;

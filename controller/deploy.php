@@ -329,6 +329,9 @@ foreach ($_builds as $_build => $_b)
 	catch (Exception $e)
 	{}
 
+	// Versão no ar: a build deixa de estar parada (`io stop`) e volta aos daemons de saúde e de CVEs.
+	Lifecycle::clearStopped ($_data, $_b);
+
 	// Versão implantada vai para o core (chip do estágio no Dashboard); nunca aborta o deploy.
 	if (self::stats ($_b)->version)
 	{

@@ -101,6 +101,18 @@ $_operations = [
 		'deploy',
 		'Stop running builds. With --down, removes the containers of the stack (docker compose down); volumes are always kept.'
 	),
+	'remove' => new Operation (
+		'Remove builds from this server and the platform',
+		'Controller::remove',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N] [--yes]',
+		[
+			'proj-b/web@release',
+			'proj-a/app-1@beta,proj-a/app-2@alpha --yes'
+		],
+		'deploy',
+		'Take builds out for good, keeping all their data: stops and removes the containers (as \'io stop --down\'), asks the platform to forget the build (its version, health and CVEs leave the Dashboard and the CVE alerts) and disables the build file (/data/builds/<project>_<app>_<stage>.json becomes .bkp, so no daemon touches it again). Volumes, the clones of the versions (and bind mounts inside them) and the backups are NEVER deleted: the command lists them at the end, with how to delete each one by hand. To bring a removed build back, rename the .bkp file to .json and run \'io deploy BUILD --force\'. Does not accept \'--all\'. Asks for confirmation; with --yes (required outside a terminal), asks nothing.'
+	),
 	'restart' => new Operation (
 		'Restart builds (--upgrade renews the images)',
 		'Controller::restart',
@@ -459,6 +471,7 @@ require_once 'class/Retention.php';
 require_once 'class/BackupVolume.php';
 require_once 'class/Cloud.php';
 require_once 'class/Report.php';
+require_once 'class/Lifecycle.php';
 require_once 'class/Trivy.php';
 require_once 'class/GitCheck.php';
 

@@ -66,7 +66,27 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	// Marca local (os daemons de saúde e de CVEs pulam a build) e aviso ao core: a plataforma apaga a saúde e as CVEs
+	// da build e mostra a versão como parada. Sem contêiner no ar, não há o que alertar. Nunca aborta o stop.
+	try
+	{
+		Lifecycle::markStopped ($_data, $_b, $_last);
+	}
+	catch (Exception $e)
+	{
+		echo "WARNING > Unable to mark the build as stopped (". $e->getMessage () ."): the health check may report it again. \n";
+	}
+
+	$stats = self::stats ($_b);
+
+	if ($stats->version || $stats->health || $stats->cve)
+	{
+		echo "INFO > Reporting to the core that the build is stopped... \n";
+
+		Report::send ([ [ 'project' => $_b->project, 'app' => $_b->app, 'stage' => $_b->stage, 'version' => $_last, 'state' => 'stopped' ] ]);
+	}
+
 	echo "SUCCESS > All done! Version '". $_last ."' of build '". $_build ."' is UNDEPLOYED and OFFLINE! \n";
 
-	echo "INFO > To bring the application back online, use the 'restart' command or push a new tag to Git. \n";
+	echo "INFO > To bring the application back online, use the 'restart' command or push a new tag to Git. To take it out of the platform for good (volumes are kept), use 'io remove ". $_build ."'. \n";
 }

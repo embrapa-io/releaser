@@ -96,6 +96,38 @@ abstract class Orchestrator
     }
 
     /**
+     * Volumes da build no host, só leitura (para o `io remove` dizer o que fica): os criados pelo orquestrador (rótulo
+     * da stack) e os externos com o prefixo `<namespace>_` (regra de validação dos volumes externos). Falha = [].
+     */
+    public static function volumes ($namespace)
+    {
+        $names = [];
+
+        foreach ([ 'label='. static::STACK_LABEL .'='. $namespace, 'name='. $namespace .'_' ] as $filter)
+        {
+            $output = [];
+
+            exec (static::DOCKER .' volume ls -q --filter '. escapeshellarg ($filter) .' 2>&1', $output, $return);
+
+            if ($return !== 0) continue;
+
+            foreach ($output as $line)
+            {
+                $v = trim ($line);
+
+                // o filtro `name=` do Docker é por substring: só o prefixo exato conta
+                if ($v !== '' && ($filter [0] === 'l' || strpos ($v, $namespace .'_') === 0)) $names [$v] = TRUE;
+            }
+        }
+
+        $names = array_keys ($names);
+
+        sort ($names);
+
+        return $names;
+    }
+
+    /**
      * Containers da build neste host, pelo rótulo da stack (Compose: projeto;
      * Swarm: namespace), no formato que o deployer da plataforma usa no health
      * check: serviço => [image, reference, state, status, healthy, size, created, running].

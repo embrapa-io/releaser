@@ -434,6 +434,79 @@ class DockerCompose extends Orchestrator
     }
 
     /**
+     * `io update`: baixa as imagens de registro e recria só os serviços cuja imagem mudou (tags *floating*, como
+     * `latest`, `2` ou `v3`). Diferente do `restart --upgrade`: não reconstrói os serviços `build:` (o build move a
+     * tag mesmo sem mudar o conteúdo, e a build seria recriada toda noite) nem usa `--force-recreate` (sem imagem
+     * nova, nenhum contêiner é tocado). Antes de recriar, roda o backup da build: sem serviço `backup`, segue; com
+     * backup que falha, nada é recriado.
+     *
+     * @return array serviços atualizados (ou que seriam, no dry run): [serviço => [reference, running, available]]
+     */
+    static public function update ($path, $namespace, $dryRun = FALSE)
+    {
+        exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
+
+        if ($return !== 0)
+            throw new Exception ("Missing 'docker-compose' command");
+
+        unset ($return);
+
+        chdir ($path);
+
+        self::pullImages ();
+
+        $outdated = self::outdated ($namespace);
+
+        if (!sizeof ($outdated)) return [];
+
+        foreach ($outdated as $service => $o)
+            echo "INFO > Service '". $service ."': image '". $o ['reference'] ."' has new content (". self::shortId ($o ['running']) ." -> ". self::shortId ($o ['available']) ."). \n";
+
+        if ($dryRun) return $outdated;
+
+        echo "INFO > Backing up the build before recreating the service(s)... \n";
+
+        try
+        {
+            self::backup ($path, $namespace);
+
+            echo "SUCCESS > Backup service ran successfully! \n";
+        }
+        catch (SkipException $e)
+        {
+            echo "INFO > ". $e->getMessage () .". Nothing to back up. \n";
+        }
+        catch (Exception $e)
+        {
+            throw new Exception ('The backup before the update failed ('. $e->getMessage () .'): no container was recreated');
+        }
+
+        chdir ($path);
+
+        $services = implode (' ', array_map ('escapeshellarg', array_keys ($outdated)));
+
+        echo "INFO > Recreating the service(s) with the new image(s)... \n";
+
+        echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --no-build --no-deps '. $services ."\n";
+
+        $output = [];
+
+        exec (''. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --no-build --no-deps '. $services .' 2>&1', $output, $return);
+
+        if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+        if ($return !== 0)
+            throw new Exception ('Error when recreating the containers with Docker Compose');
+
+        $left = array_intersect_key (self::outdated ($namespace), $outdated);
+
+        if (sizeof ($left))
+            throw new Exception ('Service(s) still running the previous image after the update: '. implode (', ', array_keys ($left)));
+
+        return $outdated;
+    }
+
+    /**
      * Serviços da aplicação (os do `.env.io`, ou seja, sem os CLI_SERVICES do perfil `cli`) que não têm container,
      * nem parado. Deve ser chamado com o diretório da build como atual (depois do `chdir`).
      */

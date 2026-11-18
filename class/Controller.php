@@ -202,6 +202,23 @@ class Controller
         require self::PATH .'restart.php';
     }
 
+    static public function update ($slice, $flag = NULL)
+    {
+        global $_daemon, $_data;
+
+        if (trim ((string) $slice) === '--dry-run')
+            throw new Exception ("Specify the builds (or '--all') before '--dry-run'. E.g.: io update proj-a/app-1@beta --dry-run");
+
+        if ($flag !== NULL && trim ((string) $flag) !== '--dry-run')
+            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'update' is '--dry-run'");
+
+        $_dryRun = $flag !== NULL;
+
+        $_builds = self::getBuilds ($_data, $slice);
+
+        require self::PATH .'update.php';
+    }
+
     static public function backup ($slice)
     {
         global $_daemon, $_data;

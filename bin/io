@@ -512,6 +512,13 @@ banner() {
   echo "${D}https://embrapa.io/docs/releaser/${N}"
 }
 
+# `io cli` (instalar, imprimir ou remover o comando `io` do servidor) não depende da configuração: sem o `.env`, vai
+# direto ao run.php, sem o assistente inicial. Assim o servidor pode nascer com o comando `io` instalado (por um script
+# de preparação, com `docker exec releaser io cli --yes`), e o primeiro `io` de quem for configurar abre o assistente.
+if [ -d "/data" ] && [ ! -f "/data/.env" ] && [ "${1:-}" = "cli" ]; then
+  exec /usr/local/bin/php /app/run.php "$@"
+fi
+
 # Na configuração inicial, o cabeçalho completo (e o run.php não o repete); sem
 # comando, o run.php imprime o menu com o cabeçalho; com comando, só uma linha.
 if [ ! -d "/data" ] || [ ! -f "/data/.env" ]; then

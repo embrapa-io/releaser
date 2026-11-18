@@ -43,6 +43,7 @@ abstract class Orchestrator
     abstract public static function deploy ($path, $namespace);
     abstract public static function stop ($path, $namespace, $down = FALSE);
     abstract public static function restart ($path, $namespace, $upgrade = FALSE);
+    abstract public static function update ($path, $namespace, $dryRun = FALSE);
     abstract public static function backup ($path, $namespace);
     abstract public static function sanitize ($path, $namespace);
     abstract public static function restore ($path, $namespace, $file);
@@ -61,6 +62,29 @@ abstract class Orchestrator
      */
     protected static function upgradeImages ()
     {
+        self::pullImages ();
+
+        $timeout = 'timeout '. self::UPGRADE_TIMEOUT;
+
+        echo "INFO > Rebuilding the services with 'build:' over a renewed base image... \n";
+
+        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache'."\n";
+
+        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache 2>&1', $output, $return);
+
+        if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+
+        if ($return !== 0)
+            throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when building images with Docker Compose' : 'Error when building images with Docker Compose');
+    }
+
+    /**
+     * Baixa as imagens de registro dos serviços do `.env.io` (as *floating* mudam de conteúdo sem mudar de nome). Os
+     * serviços `build:` ficam de fora (`--ignore-buildable`) e a falha de pull de um serviço não aborta
+     * (`--ignore-pull-failures`). É a primeira metade do `upgradeImages` e tudo o que o `io update` baixa.
+     */
+    protected static function pullImages ()
+    {
         $timeout = 'timeout '. self::UPGRADE_TIMEOUT;
 
         echo "INFO > Pulling the images of the services (floating tags get the latest content)... \n";
@@ -73,20 +97,92 @@ abstract class Orchestrator
 
         if ($return !== 0)
             throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when pulling images with Docker Compose' : 'Error when pulling images with Docker Compose');
+    }
 
-        unset ($return);
-        unset ($output);
+    /**
+     * Serviços da build cujo contêiner roda uma imagem diferente da que a referência do compose aponta agora neste
+     * host (depois de um `pull`, a tag *floating* aponta para o conteúdo novo e o contêiner segue no antigo):
+     * [serviço => [reference, running, available]], com os IDs das imagens. É o que o `io update` recria.
+     */
+    public static function outdated ($namespace)
+    {
+        $services = [];
 
-        echo "INFO > Rebuilding the services with 'build:' over a renewed base image... \n";
+        foreach (static::containers ($namespace) as $service => $c)
+            if ($c ['id'] !== '') $services [substr ($c ['id'], 0, 12)] = $service;
 
-        echo 'COMMAND > '. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache'."\n";
+        if (!sizeof ($services)) return [];
 
-        exec (''. self::env ('.env.io') .' '. $timeout .' '. static::DOCKER_COMPOSE .' build --pull --no-cache 2>&1', $output, $return);
+        $lines = [];
 
-        if (sizeof ($output)) echo implode ("\n", $output) ."\n";
+        exec (static::DOCKER .' inspect --type container --format '. escapeshellarg ('{{.Id}}|{{.Image}}|{{.Config.Image}}') .' '. implode (' ', array_map ('escapeshellarg', array_keys ($services))) .' 2> /dev/null', $lines);
 
-        if ($return !== 0)
-            throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when building images with Docker Compose' : 'Error when building images with Docker Compose');
+        $running = [];
+
+        foreach ($lines as $line)
+        {
+            $parts = explode ('|', trim ($line), 3);
+
+            if (sizeof ($parts) !== 3 || !isset ($services [substr ($parts [0], 0, 12)])) continue;
+
+            $running [$services [substr ($parts [0], 0, 12)]] = [ 'image' => $parts [1], 'reference' => $parts [2] ];
+        }
+
+        $available = [];
+
+        foreach (array_unique (array_column ($running, 'reference')) as $reference)
+        {
+            if (!self::floating ($reference)) continue;
+
+            $output = [];
+
+            exec (static::DOCKER .' image inspect --format '. escapeshellarg ('{{.Id}}') .' '. escapeshellarg ($reference) .' 2> /dev/null', $output, $return);
+
+            $available [$reference] = $return === 0 && isset ($output [0]) && trim ($output [0]) !== '' ? trim ($output [0]) : NULL;
+        }
+
+        return self::compareImages ($running, $available);
+    }
+
+    /**
+     * A referência pode mudar de conteúdo? Não, quando é um ID de imagem ou está fixada por digest (`@sha256:`).
+     */
+    public static function floating ($reference)
+    {
+        $reference = trim ((string) $reference);
+
+        return $reference !== '' && strpos ($reference, '@sha256:') === FALSE && !preg_match ('/^(sha256:)?[0-9a-f]{12,64}$/', $reference);
+    }
+
+    /**
+     * Parte pura do `outdated`: `$running` [serviço => [image (ID em execução), reference]] contra `$available`
+     * [referência => ID atual no host, ou NULL se a imagem não está no host]. Sem ID dos dois lados, não há o que
+     * comparar e o serviço fica de fora.
+     */
+    public static function compareImages (array $running, array $available)
+    {
+        $outdated = [];
+
+        foreach ($running as $service => $c)
+        {
+            $reference = $c ['reference'] ?? '';
+
+            if (!self::floating ($reference) || !isset ($available [$reference]) || trim ((string) ($c ['image'] ?? '')) === '') continue;
+
+            if ($available [$reference] === $c ['image']) continue;
+
+            $outdated [$service] = [ 'reference' => $reference, 'running' => $c ['image'], 'available' => $available [$reference] ];
+        }
+
+        ksort ($outdated);
+
+        return $outdated;
+    }
+
+    /** ID de imagem abreviado para as mensagens ("sha256:0123456789ab…" → "0123456789ab"). */
+    public static function shortId ($id)
+    {
+        return substr (preg_replace ('/^sha256:/', '', (string) $id), 0, 12);
     }
 
     // Código de saída do `timeout` (GNU: 124; BusyBox: 143, por SIGTERM).

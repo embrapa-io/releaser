@@ -41,20 +41,24 @@ foreach ($vars as $trash => $var)
 	if (getenv ($var) === FALSE)
 		$unsetted [] = $var;
 
-if (sizeof ($unsetted))
+// `io cli` (o comando `io` no servidor) é o único que roda antes da configuração inicial: não usa nenhuma destas
+// variáveis, e o `bin/io` o manda para cá sem o `.env` (servidor preparado por script, antes do assistente).
+$_unconfigured = sizeof ($unsetted) > 0 && isset ($argv [1]) && trim ($argv [1]) === 'cli';
+
+if (sizeof ($unsetted) && !$_unconfigured)
 	die ("CRITICAL > Required environment variables are not set: ". implode (', ', $unsetted) ."! \n");
 
 require_once 'class/Mail.php';
 
-if (!Mail::isValid (getenv ('SMTP_FROM')))
+if (!$_unconfigured && !Mail::isValid (getenv ('SMTP_FROM')))
 	echo "WARNING > The e-mail address in 'SMTP_FROM' (in the '.env' file) appears to be invalid! \n";
 
-if (!Mail::isValid (getenv ('LOG_MAIL')))
+if (!$_unconfigured && !Mail::isValid (getenv ('LOG_MAIL')))
 	echo "WARNING > The e-mail address in 'LOG_MAIL' (in the '.env' file) appears to be invalid! \n";
 
 require_once 'plugin/Orchestrator.php';
 
-if (!Orchestrator::exists (getenv ('ORCHESTRATOR')))
+if (!$_unconfigured && !Orchestrator::exists (getenv ('ORCHESTRATOR')))
 	die ("CRITICAL > Orchestrator '". getenv ('ORCHESTRATOR') ."' set in '.env' is not valid! \n");
 
 require_once 'class/Operation.php';
@@ -125,6 +129,19 @@ $_operations = [
 		],
 		'deploy',
 		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' from scratch over a renewed base image (build --pull --no-cache) and recreates the containers; then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
+	),
+	'update' => new Operation (
+		'Update the images of builds (floating tags)',
+		'Controller::update',
+		1,
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run]',
+		[
+			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
+			'--all',
+			'proj-b/web@release --dry-run'
+		],
+		'deploy',
+		'Keep the deployed version and bring the images up to date: pulls the registry images of the services and recreates only the services whose image has new content (floating tags, such as \'latest\', \'2\' or \'17-alpine\'). Services with \'build:\' are not rebuilt and services with no new image are not touched (for that, use \'io restart --upgrade\'). Before recreating, runs the backup service of the build; if the backup fails, nothing is recreated. Afterwards, scans the build for CVEs. With --dry-run, only pulls and shows what would be recreated. Runs every night for the builds with "auto": { "update": true } in their file (default: false), with an e-mail only when something was updated or failed. Docker Compose only.'
 	),
 	'rollback' => new Operation (
 		'Roll a build back to a previous version',
@@ -338,7 +355,7 @@ try
 
 	$_operation = trim ($aux [0]);
 
-	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'cloud', 'health', 'cve', 'check' ]) ? TRUE : FALSE;
+	$_daemon = sizeof ($aux) == 2 && trim ($aux [1]) == 'daemon' && in_array ($aux [0], [ 'deploy', 'backup', 'sanitize', 'cleaner', 'cloud', 'update', 'health', 'cve', 'check' ]) ? TRUE : FALSE;
 }
 catch (Exception $e)
 {
@@ -431,6 +448,7 @@ $lifetimes = [
 	'sanitize' => 15 * 24 * 60, // 15 days
 	'cleaner' => 12 * 60, // 12 hours
 	'cloud' => 20 * 60, // 20 hours (roda uma vez por dia; o envio de backups grandes pode demorar)
+	'update' => 12 * 60, // 12 hours (roda uma vez por dia; pull e backup de cada build com imagem nova)
 	'health' => 10, // 10 minutes (roda a cada minuto)
 	'cve' => 3 * 60, // 3 hours (roda a cada hora)
 	'check' => 60 // 1 hour (roda uma vez por dia)

@@ -594,6 +594,11 @@ class DockerSwarm extends Orchestrator
     }
 
     // Restore em Swarm: os serviços de CLI rodam como serviço avulso, com o volume do nó onde a tarefa cair (fase 2).
+    static public function update ($path, $name, $dryRun = FALSE)
+    {
+        throw new SkipException ("Update is not supported on Docker Swarm yet (use 'io restart --upgrade')");
+    }
+
     static public function restore ($path, $name, $file)
     {
         throw new SkipException ("Restore is not supported on Docker Swarm yet");

@@ -307,7 +307,7 @@ $definition = [
 	'team' => $team,
 	'sentry' => [ 'dsn' => $dsn ],
 	'matomo' => [ 'id' => $matomoId, 'token' => $matomoToken ],
-	'auto' => [ 'deploy' => TRUE, 'backup' => TRUE, 'sanitize' => TRUE, 'cleaner' => FALSE, 'cloud' => FALSE ],
+	'auto' => [ 'deploy' => TRUE, 'backup' => TRUE, 'sanitize' => TRUE, 'cleaner' => FALSE, 'cloud' => FALSE, 'update' => FALSE ],
 	'stats' => [ 'version' => TRUE, 'cve' => TRUE, 'health' => TRUE ],
 	'env' => (object) $env
 ];

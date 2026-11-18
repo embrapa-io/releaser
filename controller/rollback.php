@@ -59,6 +59,12 @@ try
 
 	$_apps = $_data . DIRECTORY_SEPARATOR .'apps';
 
+	// Trava por build (class/BuildLock.php): não troca a versão com um deploy ou outro comando em andamento na build.
+	$_busy = BuildLock::acquire ($_data, $_b, 'rollback');
+
+	if ($_busy !== TRUE)
+		throw new Exception (BuildLock::message ($_busy) .' Run the rollback again when that command ends');
+
 	echo "INFO > Trying to roll back ". $_build ." from version ". $_last ." to ". $_version ."... \n";
 
 	echo "INFO > Checking tags... \n";

@@ -8,6 +8,8 @@ echo "INFO > Checking the status of ". sizeof ($_builds) ." configured build(s).
 
 foreach ($_builds as $_build => $_b)
 {
+	BuildLock::release ();
+
 	if ($_daemon && !$_b->auto->deploy) continue;
 
 	echo "\n";
@@ -130,6 +132,36 @@ foreach ($_builds as $_build => $_b)
 	if (is_string ($_last) && $_last !== '' && self::score ($_b->stage, $_last) >= $_newer ['score'])
 	{
 		echo "INFO > No new tags found! \n\n";
+
+		continue;
+	}
+
+	// Trava por build (class/BuildLock.php): só a partir daqui o deploy mexe no servidor. Sem ela, o cron e um
+	// `io deploy` manual clonavam a mesma tag no mesmo diretório ao mesmo tempo. No daemon, a build ocupada não
+	// gera e-mail: o comando em andamento dá a notícia, e o próximo ciclo confere de novo.
+	$_busy = BuildLock::acquire ($_data, $_b, 'deploy'. ($_daemon ? ':daemon' : ''));
+
+	if ($_busy !== TRUE)
+	{
+		echo "WARNING > ". BuildLock::message ($_busy) ." Skipping: run it again when that command ends. \n\n";
+
+		continue;
+	}
+
+	// Com a trava na mão, a versão implantada é lida de novo: o comando que a segurava pode ter acabado de implantar
+	// esta mesma tag.
+	try
+	{
+		$_last = $_force ? NULL : trim (file_get_contents ($version));
+	}
+	catch (Exception $e)
+	{
+		$_last = NULL;
+	}
+
+	if (is_string ($_last) && $_last !== '' && self::score ($_b->stage, $_last) >= $_newer ['score'])
+	{
+		echo "INFO > Version ". $_last ." was deployed by another command in the meantime. Nothing to do. \n\n";
 
 		continue;
 	}
@@ -352,3 +384,5 @@ foreach ($_builds as $_build => $_b)
 
 	if ($_daemon) Mail::singleton ()->send ($_build .' '. $_newer ['name'] .' - RELEASE SUCCESS'. ($_backupFailed ? ' (BACKUP FAILED)' : ''), mailBody (), $_b->team);
 }
+
+BuildLock::release ();

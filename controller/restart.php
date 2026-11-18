@@ -19,6 +19,16 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	// Trava por build (class/BuildLock.php): um deploy ou outro comando em andamento nesta build faz este esperar a vez.
+	$_busy = BuildLock::acquire ($_data, $_b, 'restart');
+
+	if ($_busy !== TRUE)
+	{
+		echo "WARNING > ". BuildLock::message ($_busy) ." Skipping: run it again when that command ends. \n\n";
+
+		continue;
+	}
+
 	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 
 	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))
@@ -83,6 +93,9 @@ foreach ($_builds as $_build => $_b)
 
 	if ($_upgrade || $wasStopped) $upgraded [$_build] = $_b;
 }
+
+// A varredura de CVEs abaixo só lê: a trava da última build não fica presa por ela.
+BuildLock::release ();
 
 if (!sizeof ($upgraded)) return;
 

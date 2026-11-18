@@ -49,6 +49,16 @@ foreach ($_builds as $_build => $_b)
 		continue;
 	}
 
+	// Trava por build (class/BuildLock.php): um deploy ou outro comando em andamento nesta build faz este esperar a vez.
+	$_busy = BuildLock::acquire ($_data, $_b, 'remove');
+
+	if ($_busy !== TRUE)
+	{
+		echo "WARNING > ". BuildLock::message ($_busy) ." Skipping: run it again when that command ends. \n\n";
+
+		continue;
+	}
+
 	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))
 	{
 		echo "ERROR > Invalid build name! \n\n";

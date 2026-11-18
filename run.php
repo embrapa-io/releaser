@@ -472,6 +472,8 @@ require_once 'class/BackupVolume.php';
 require_once 'class/Cloud.php';
 require_once 'class/Report.php';
 require_once 'class/Lifecycle.php';
+require_once 'class/BuildLock.php';
+require_once 'class/DataVolume.php';
 require_once 'class/Trivy.php';
 require_once 'class/GitCheck.php';
 

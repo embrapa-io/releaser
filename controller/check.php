@@ -38,6 +38,21 @@ echo $prefix [$check ['clone']['status']] ." > ". $check ['clone']['via'] .": ".
 
 echo "\n";
 
+// Diretório de dados: em sistema de arquivos de rede o Releaser funciona, mas uma oscilação do servidor de arquivos
+// interrompe o deploy no meio ("Stale file handle"). Só informa: não entra no resumo nem no e-mail do daemon.
+$volume = DataVolume::filesystem ($_data ? $_data : '/data');
+
+echo "INFO > Data directory (". ($_data ? $_data : '/data') .")... \n";
+
+if (!$volume)
+	echo "INFO > Storage: file system not identified \n";
+elseif ($volume ['network'])
+	echo "WARNING > Storage: network file system (". $volume ['type'] .", ". $volume ['source'] ."). The Releaser works on it, but a local disk is recommended: on a network share, a hiccup of the file server interrupts deploys and backups ('Stale file handle'). \n";
+else
+	echo "SUCCESS > Storage: local file system (". $volume ['type'] .") \n";
+
+echo "\n";
+
 // Cópia em nuvem: uma vez por configuração em uso (ver class/Cloud.php), a do servidor (quando alguma
 // variável S3_* está no .env) e a própria de cada projeto com arquivo em /data/s3/.
 if ($check ['cloud'])

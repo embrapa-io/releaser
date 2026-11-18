@@ -19,6 +19,7 @@ cd "$(dirname "$0")/.."
 ID=$$
 NET=releaser-remove-$ID
 CORE=releaser-remove-core-$ID
+BOTH=releaser-remove-both-$ID
 IMAGE=releaser-remove-test
 FIX=$(mktemp -d "${TMPDIR:-/tmp}/releaser-remove.XXXXXX")
 P=demo; A=web; S=alpha; NS=${P}_${A}_${S}; TAG=1.26.11-alpha.1; B=$P/$A@$S
@@ -28,7 +29,7 @@ check () { if [ "$2" = "0" ]; then echo "ok   $1"; else echo "FAIL $1"; fail=$((
 
 cleanup () {
   docker compose -p "$NS" down --remove-orphans > /dev/null 2>&1 || true
-  docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=$NS") "$CORE" > /dev/null 2>&1 || true
+  docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=$NS") "$CORE" "$BOTH" > /dev/null 2>&1 || true
   docker volume rm -f ${NS}_data ${NS}_cache > /dev/null 2>&1 || true
   docker network rm "$NET" > /dev/null 2>&1 || true
   if [ -z "${KEEP:-}" ]; then docker run --rm -v "$FIX":/fix busybox rm -rf /fix/files /fix/data > /dev/null 2>&1 || true; rm -rf "$FIX"; fi
@@ -125,6 +126,24 @@ set +e
 io restart $B > "$FIX/out"; [ "$(running)" = "1" ]; check 'io restart sobe a app' $?
 docker volume inspect ${NS}_cache > /dev/null 2>&1; check 'o Compose criou o volume nomeado (sem external)' $?
 docker run --rm -v ${NS}_cache:/cache busybox sh -c 'echo nomeado > /cache/state'
+
+# 0b. trava por build (class/BuildLock.php): dois comandos ao mesmo tempo na mesma build, no mesmo contêiner (como o
+# cron e um `docker exec`, que dividem o /proc). Um deles faz o trabalho e o outro pula a build, sem tocar nela.
+docker run -d --name "$BOTH" --network "$NET" --add-host o1289077.ingest.sentry.io:127.0.0.1 --env-file "$FIX/env" \
+  -v "$FIX/data":/data -v /var/run/docker.sock:/var/run/docker.sock "$IMAGE" sleep 600 > /dev/null
+docker exec "$BOTH" php /app/run.php restart $B > "$FIX/both1" 2>&1 < /dev/null &
+docker exec "$BOTH" php /app/run.php restart $B > "$FIX/both2" 2>&1 < /dev/null
+wait
+cat "$FIX/both1" "$FIX/both2" > "$FIX/out"
+[ "$(grep -c 'Another command is running on this build' "$FIX/out")" = "1" ]; check 'dois restarts juntos: um deles encontra a build ocupada' $?
+[ "$(grep -c 'SUCCESS > All done' "$FIX/out")" = "1" ]; check 'dois restarts juntos: só um reinicia a app' $?
+grep -q "Another command is running on this build: 'restart' since .* (pid [0-9]*)" "$FIX/out"; check 'o aviso diz qual comando, desde quando e o pid' $?
+[ -z "$(ls "$FIX/data/.busy" 2>/dev/null)" ]; check 'a trava é solta no fim dos dois comandos' $?
+docker exec "$BOTH" php /app/run.php restart $B > "$FIX/out" 2>&1 < /dev/null; grep -q 'SUCCESS > All done' "$FIX/out"; check 'depois, o restart volta a funcionar' $?
+docker exec "$BOTH" sh -c 'echo "{\"pid\":999999,\"start\":\"1\",\"operation\":\"deploy:daemon\",\"since\":\"2026-11-01T00:00:00+00:00\"}" > /data/.busy/'$NS'.lock'
+docker exec "$BOTH" php /app/run.php restart $B > "$FIX/out" 2>&1 < /dev/null; grep -q 'SUCCESS > All done' "$FIX/out"; check 'trava de processo que morreu não prende a build' $?
+docker rm -f "$BOTH" > /dev/null
+[ "$(running)" = "1" ]; check 'a app segue no ar' $?
 
 # 1. stop: marca local, aviso ao core com state stopped e a versão
 : > "$FIX/core/requests.log"

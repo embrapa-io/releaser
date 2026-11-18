@@ -88,6 +88,8 @@ $orchestrator = getenv ('ORCHESTRATOR');
 
 foreach ($_builds as $_build => $_b)
 {
+	BuildLock::release ();
+
 	$auto = isset ($_b->auto) && isset ($_b->auto->cloud) ? $_b->auto->cloud : FALSE;
 
 	if ($_daemon && Retention::policy ($auto) === FALSE) continue;
@@ -114,6 +116,10 @@ foreach ($_builds as $_build => $_b)
 
 		continue;
 	}
+
+	// Trava por build (class/BuildLock.php): não envia um arquivo que o backup ainda está gravando nem lista o volume
+	// enquanto o cleaner apaga. --dry-run, --list e --verify só leem e dispensam a trava.
+	if (!$_dryRun && !$_list && !$_verify && !self::lock ($_b, 'cloud')) continue;
 
 	if (!preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->project) || !preg_match ('/^[a-z0-9][a-z0-9-]+[a-z0-9]$/', $_b->app) || !in_array ($_b->stage, [ 'alpha', 'beta', 'release' ]))
 	{

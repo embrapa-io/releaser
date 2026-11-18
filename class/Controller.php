@@ -345,6 +345,24 @@ class Controller
         return FALSE;
     }
 
+    /**
+     * Pega a trava da build (class/BuildLock.php) para um comando que lê ou grava os dados dela (backup, sanitize,
+     * cleaner, cloud). No daemon, espera o comando em andamento terminar (até BuildLock::PATIENCE); em execução manual,
+     * não espera. FALSE = a build continua ocupada (já avisado): o chamador a pula.
+     */
+    static public function lock ($b, $operation)
+    {
+        global $_daemon, $_data;
+
+        $busy = $_daemon ? BuildLock::wait ($_data, $b, $operation .':daemon') : BuildLock::acquire ($_data, $b, $operation);
+
+        if ($busy === TRUE) return TRUE;
+
+        echo "WARNING > ". BuildLock::message ($busy) . ($_daemon ? " It did not end in ". intval (BuildLock::PATIENCE / 60) ." minutes. Skipping this build." : " Skipping: run it again when that command ends.") ." \n\n";
+
+        return FALSE;
+    }
+
     static public function cli ($flag = NULL, $flag2 = NULL)
     {
         $_flags = [];

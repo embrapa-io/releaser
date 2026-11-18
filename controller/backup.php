@@ -6,6 +6,8 @@ echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to BACK UP.
 
 foreach ($_builds as $_build => $_b)
 {
+	BuildLock::release ();
+
 	if ($_daemon && !$_b->auto->backup) continue;
 
 	echo "\n";
@@ -18,6 +20,9 @@ foreach ($_builds as $_build => $_b)
 
 		continue;
 	}
+
+	// Trava por build (class/BuildLock.php): não faz o backup no meio de um deploy, restart ou outro comando na build.
+	if (!self::lock ($_b, 'backup')) continue;
 
 	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 

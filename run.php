@@ -502,6 +502,8 @@ try
 
 	call_user_func_array ($function, array_slice ($argv, 2));
 
+	BuildLock::release (); // trava da última build do laço: não espera os e-mails
+
 	try { @unlink ($_lock); } catch (Exception $e) {}
 
 	echo "\n";

@@ -142,6 +142,16 @@ grep -q "Another command is running on this build: 'restart' since .* (pid [0-9]
 docker exec "$BOTH" php /app/run.php restart $B > "$FIX/out" 2>&1 < /dev/null; grep -q 'SUCCESS > All done' "$FIX/out"; check 'depois, o restart volta a funcionar' $?
 docker exec "$BOTH" sh -c 'echo "{\"pid\":999999,\"start\":\"1\",\"operation\":\"deploy:daemon\",\"since\":\"2026-11-01T00:00:00+00:00\"}" > /data/.busy/'$NS'.lock'
 docker exec "$BOTH" php /app/run.php restart $B > "$FIX/out" 2>&1 < /dev/null; grep -q 'SUCCESS > All done' "$FIX/out"; check 'trava de processo que morreu não prende a build' $?
+# Trava de um processo que está vivo (o `sleep` do próprio contêiner, com o início lido do /proc): os comandos que leem
+# ou gravam os dados da build também a respeitam; os que só leem (--dry-run), não.
+docker exec "$BOTH" sh -c 'p=$(pgrep -o sleep); s=$(awk "{print \$22}" /proc/$p/stat); printf "{\"pid\":%s,\"start\":\"%s\",\"operation\":\"deploy\",\"since\":\"2026-11-18T10:00:00+00:00\"}" "$p" "$s" > /data/.busy/'$NS'.lock'
+for cmd in backup sanitize cleaner stop; do
+  docker exec "$BOTH" php /app/run.php $cmd $B > "$FIX/out" 2>&1 < /dev/null
+  grep -q "Another command is running on this build: 'deploy'" "$FIX/out" && ! grep -q 'SUCCESS >' "$FIX/out"; check "com um deploy em andamento, o io $cmd pula a build" $?
+done
+docker exec "$BOTH" php /app/run.php cleaner $B --dry-run > "$FIX/out" 2>&1 < /dev/null; ! grep -q 'Another command is running' "$FIX/out"; check 'io cleaner --dry-run só lê e não depende da trava' $?
+[ "$(running)" = "1" ] && [ -f "$FIX/data/.busy/${NS}.lock" ]; check 'a app segue no ar e a trava do outro comando fica intacta' $?
+docker exec "$BOTH" rm -f /data/.busy/$NS.lock
 docker rm -f "$BOTH" > /dev/null
 [ "$(running)" = "1" ]; check 'a app segue no ar' $?
 

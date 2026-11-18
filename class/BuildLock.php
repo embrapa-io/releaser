@@ -7,7 +7,9 @@
  * com o `deploy:daemon` do cron, os dois achavam a mesma tag nova e o segundo apagava e reclonava o diretório
  * `apps/<proj>/<app>/<tag>` por baixo do primeiro (`cat: can't open '.env.io': Stale file handle` com o /data em NFS,
  * nov/2026). Esta trava vale para o daemon e para o comando manual, e é usada pelos comandos que trocam ou param a
- * stack: deploy, rollback, restart, stop e remove.
+ * stack (deploy, rollback, restart, stop e remove) e, desde a 1.26.11-7, pelos que leem ou gravam os dados dela
+ * (backup, sanitize, cleaner, cloud e restore): um backup feito durante um deploy sairia inconsistente, e a cópia em
+ * nuvem poderia enviar um arquivo que o backup ainda está gravando.
  *
  * Arquivo /data/.busy/<proj>_<app>_<stage>.lock com JSON {pid, start, operation, since}. Não depende de flock (que
  * varia entre sistemas de arquivos de rede): a criação é atômica (`fopen` em modo 'x') e o dono é conferido pelo
@@ -22,6 +24,9 @@ class BuildLock
 
     // Espera depois de assumir uma trava abandonada, para dois processos que a assumam ao mesmo tempo verem o mesmo dono.
     const SETTLE = 300000;
+
+    // Quanto os daemons de backup, sanitize, cleaner e cloud esperam por um comando em andamento na build (segundos).
+    const PATIENCE = 1800;
 
     static private $held = NULL;
 
@@ -145,6 +150,38 @@ class BuildLock
         if (is_array ($now) && $now ['pid'] === $pid) return self::hold ($file);
 
         return is_array ($now) ? $now : [ 'pid' => 0, 'start' => '', 'operation' => '?', 'since' => '' ];
+    }
+
+    /**
+     * Como `acquire`, mas espera o comando em andamento terminar, até `$timeout` segundos. É o que os daemons de
+     * backup, sanitize, cleaner e cloud usam: pular a build deixaria a noite sem backup por causa de um deploy de
+     * poucos minutos.
+     *
+     * @return TRUE, ou os dados de quem ainda segura a trava no fim da espera.
+     */
+    static public function wait ($data, $b, $operation, $timeout = self::PATIENCE, $interval = 5, callable $probe = NULL)
+    {
+        $deadline = microtime (TRUE) + $timeout;
+
+        $told = FALSE;
+
+        while (TRUE)
+        {
+            $busy = self::acquire ($data, $b, $operation, $probe);
+
+            if ($busy === TRUE) return TRUE;
+
+            if (microtime (TRUE) >= $deadline) return $busy;
+
+            if (!$told)
+            {
+                $told = TRUE;
+
+                echo "INFO > ". self::message ($busy) ." Waiting up to ". intval (ceil ($timeout / 60)) ." minute(s) for it to end... \n";
+            }
+
+            usleep ((int) ($interval * 1000000));
+        }
     }
 
     /**

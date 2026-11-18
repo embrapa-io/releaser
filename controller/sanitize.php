@@ -6,6 +6,8 @@ echo "INFO > Checking the status of ". sizeof ($_builds) ." build(s) to SANITIZE
 
 foreach ($_builds as $_build => $_b)
 {
+	BuildLock::release ();
+
 	if ($_daemon && !$_b->auto->sanitize) continue;
 
 	echo "\n";
@@ -18,6 +20,9 @@ foreach ($_builds as $_build => $_b)
 
 		continue;
 	}
+
+	// Trava por build (class/BuildLock.php): não roda no meio de um deploy, backup ou outro comando na build.
+	if (!self::lock ($_b, 'sanitize')) continue;
 
 	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 

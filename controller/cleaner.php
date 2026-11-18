@@ -33,6 +33,8 @@ $orchestrator = getenv ('ORCHESTRATOR');
 
 foreach ($_builds as $_build => $_b)
 {
+	BuildLock::release ();
+
 	// 'auto.cleaner': false/ausente (desligado), true ou "undated" — ver Retention::policy().
 	// Em modo daemon só roda quando ligado. Em execução manual roda sempre, com a
 	// política do builds.json (se houver) ou a padrão — ambas com as contagens de RETENTION.
@@ -54,6 +56,10 @@ foreach ($_builds as $_build => $_b)
 
 		continue;
 	}
+
+	// Trava por build (class/BuildLock.php): não apaga arquivos enquanto um backup ou a cópia em nuvem roda. O
+	// --dry-run só lê e dispensa a trava.
+	if (!$_dryRun && !self::lock ($_b, 'cleaner')) continue;
 
 	echo "INFO > Checking if build '". $_build ."' has been deployed... \n";
 

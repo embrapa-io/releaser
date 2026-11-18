@@ -346,6 +346,17 @@ if (!file_exists ($stateDir)) mkdir ($stateDir, 0700, TRUE);
 $lock = $stateDir . DIRECTORY_SEPARATOR . $namespace .'.lock';
 $stateFile = $stateDir . DIRECTORY_SEPARATOR . $namespace .'.json';
 
+// Trava por build (class/BuildLock.php), depois das confirmações: o restore não começa com um deploy, backup ou outro
+// comando em andamento na build. Solta no fim do processo.
+$_busy = BuildLock::acquire ($_data, $_b, 'restore');
+
+if ($_busy !== TRUE)
+{
+	echo "\nERROR > ". BuildLock::message ($_busy) ." Nothing done: run the restore again when that command ends. \n\n";
+
+	return;
+}
+
 file_put_contents ($lock, (string) getmypid (), LOCK_EX);
 
 $state = [

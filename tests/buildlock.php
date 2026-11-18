@@ -127,6 +127,62 @@ foreach ([ 'vazio' => '', 'lixo' => 'not json', 'sem pid' => '{"operation":"depl
 
 check ('nenhum arquivo temporário sobra', glob ($data .'/.busy/*') === []);
 
+// --- espera (daemons de backup, sanitize, cleaner e cloud) -----------------------------------------------------------
+
+ob_start ();
+
+$got = BuildLock::wait ($data, $a, 'backup:daemon', 5, 0.01, $probe);
+
+$said = ob_get_clean ();
+
+check ('espera com a build livre: pega na hora, sem aviso', $got === TRUE && $said === '', $said);
+
+BuildLock::release ();
+
+// O outro comando termina na terceira consulta: a espera pega a trava em seguida.
+$otherStart = '2000';
+
+file_put_contents ($fileA, $content);
+
+$calls = 0;
+
+$ending = function ($pid) use ($me, $other, &$calls)
+{
+	if ($pid === $me) return '1000';
+
+	return $pid === $other && ++$calls < 3 ? '2000' : NULL;
+};
+
+ob_start ();
+
+$got = BuildLock::wait ($data, $a, 'backup:daemon', 5, 0.01, $ending);
+
+$said = ob_get_clean ();
+
+check ('espera: pega a trava quando o outro comando termina', $got === TRUE && BuildLock::parse (file_get_contents ($fileA)) ['operation'] === 'backup:daemon');
+check ('espera: avisa uma vez só, com o comando e o prazo', substr_count ($said, 'INFO > ') === 1 && strpos ($said, "'deploy:daemon'") !== FALSE && strpos ($said, 'Waiting up to 1 minute(s)') !== FALSE, $said);
+
+BuildLock::release ();
+
+file_put_contents ($fileA, $content);
+
+ob_start ();
+
+$began = microtime (TRUE);
+
+$got = BuildLock::wait ($data, $a, 'backup:daemon', 0.2, 0.02, $probe);
+
+$took = microtime (TRUE) - $began;
+
+ob_end_clean ();
+
+check ('espera: prazo esgotado devolve quem segura a trava', is_array ($got) && $got ['pid'] === $other && $took >= 0.2 && $took < 2, json_encode ($got) .' em '. $took .' s');
+check ('espera: prazo esgotado deixa a trava do outro intacta', file_get_contents ($fileA) === $content);
+
+unlink ($fileA);
+
+$otherStart = NULL;
+
 // --- /proc de verdade ------------------------------------------------------------------------------------------------
 
 if (is_readable ('/proc/self/stat'))

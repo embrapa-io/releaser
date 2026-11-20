@@ -332,5 +332,32 @@ io restart --no-backup > "$FIX/out"; grep -q "Specify the builds" "$FIX/out"; ch
 io restart $B --upgrade --force > "$FIX/out"; grep -q "Unknown parameter '--force'" "$FIX/out" && [ "$(cid web)" = "$W" ]; check 'restart: opção desconhecida é recusada' $?
 [ -z "$(ls "$FIX/data/.busy" 2> /dev/null)" ]; check 'nenhuma trava por build fica para trás' $?
 
+# 13. backup do daemon (desde a 1.26.11-9): e-mail só quando o backup da noite NÃO foi feito
+errmails () { docker run --rm -v "$FIX/data":/data busybox sh -c 'grep -l "BACKUP ERROR" /data/.mail/*.json 2> /dev/null | xargs -r grep -l "'"$1"'" | wc -l' | tr -d ' '; }
+build ''
+N=$(backups)
+io backup:daemon --all > "$FIX/out"
+[ "$(backups)" = "$N" ] && [ "$(mails 'BACKUP ERROR')" = "0" ] && [ ! -e "$FIX/data/.lock/backup" ]; check 'backup do daemon com a build sem o atributo auto: ignorada, sem e-mail e sem trava para trás' $?
+build ',"auto":{"backup":true}'
+io backup:daemon --all > "$FIX/out"
+[ "$(backups)" = "$((N + 1))" ] && [ "$(mails 'BACKUP ERROR')" = "0" ]; check 'backup do daemon que dá certo: sem e-mail' $?
+docker run --rm -v ${NS}_data:/data busybox touch /data/fail-backup
+io backup $B > "$FIX/out"
+grep -q 'Unable to back up build' "$FIX/out" && [ "$(mails 'BACKUP ERROR')" = "0" ]; check 'backup manual que falha: erro na tela, sem e-mail' $?
+io backup:daemon --all > "$FIX/out"
+[ "$(mails "$B - BACKUP ERROR")" = "1" ]; check 'backup do daemon que falha: e-mail BACKUP ERROR com a build no assunto' $?
+[ "$(errmails 'dev@example.com')" = "1" ]; check 'backup do daemon que falha: e-mail em cópia para a equipe da build' $?
+[ "$(errmails 'Unable to back up build')" = "1" ] && [ "$(errmails 'was NOT done')" = "1" ]; check 'backup do daemon que falha: o corpo traz o erro e o aviso de que a noite ficou sem backup' $?
+io backup:daemon --all > "$FIX/out"
+[ "$(mails 'BACKUP ERROR')" = "2" ]; check 'backup do daemon que falha de novo: um e-mail por execução' $?
+docker run --rm -v ${NS}_data:/data busybox rm -f /data/fail-backup
+io backup:daemon --all > "$FIX/out"
+[ "$(mails 'BACKUP ERROR')" = "2" ]; check 'backup do daemon volta a dar certo: sem e-mail novo' $?
+docker run --rm -v "$FIX/data":/data busybox mv /data/apps/$P/$A/$TAG /data/apps/$P/$A/$TAG.away
+io backup:daemon --all > "$FIX/out"
+[ "$(errmails 'is missing')" = "1" ]; check 'backup do daemon com o clone da versão ausente: e-mail BACKUP ERROR' $?
+docker run --rm -v "$FIX/data":/data busybox mv /data/apps/$P/$A/$TAG.away /data/apps/$P/$A/$TAG
+[ -z "$(ls "$FIX/data/.busy" 2> /dev/null)" ]; check 'backup do daemon: nenhuma trava por build fica para trás' $?
+
 echo
 if [ "$fail" -eq 0 ]; then echo "update-integration: all ok"; else echo "update-integration: $fail FAIL"; exit 1; fi

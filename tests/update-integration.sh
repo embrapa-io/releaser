@@ -8,6 +8,14 @@
 # parada com `io stop` não é atualizada; o daemon só age com "auto": { "update": true } e manda e-mail só quando
 # atualizou.
 #
+# Também o backup que antecede a troca de imagens nos dois comandos (`io update` e `io restart --upgrade`): falha fora
+# de terminal para e aponta o `--no-backup`; em terminal, pergunta (resposta não = nada recriado; sim = segue); o
+# `--no-backup` pula o backup; o `restart --upgrade` de uma build sem contêiner no ar volta sem backup, com aviso; o
+# `restart` simples não faz backup.
+#
+# Os casos de terminal usam um pty aberto pelo Python padrão da máquina (só a biblioteca padrão); sem `python3`, são
+# pulados com aviso.
+#
 #   tests/update-integration.sh        (KEEP=1 mantém a fixture)
 set -euo pipefail
 
@@ -123,6 +131,54 @@ io () {
     -v "$FIX/data":/data -v /var/run/docker.sock:/var/run/docker.sock "$IMAGE" php /app/run.php "$@" 2>&1 < /dev/null
 }
 
+# Terminal de verdade (pty) para os casos em que o comando pergunta: roda o comando num pty, espera a pergunta aparecer
+# na saída e só então digita a resposta (digitada antes, ela seria consumida pelo `docker compose run` do backup).
+cat > "$FIX/tty.py" <<'EOF'
+import os, pty, select, sys, time
+
+answer, marker, cmd = sys.argv[1], sys.argv[2].encode(), sys.argv[3:]
+
+pid, fd = pty.fork()
+
+if pid == 0:
+    os.execvp(cmd[0], cmd)
+
+seen, sent, deadline = b'', False, time.time() + 900
+
+while time.time() < deadline:
+    ready, _, _ = select.select([fd], [], [], 1)
+
+    if fd not in ready: continue
+
+    try: data = os.read(fd, 4096)
+    except OSError: break
+
+    if not data: break
+
+    seen += data
+
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+    if not sent and marker in seen:
+        os.write(fd, (answer + '\n').encode())
+        sent = True
+else:
+    os.kill(pid, 9)
+
+os.waitpid(pid, 0)
+EOF
+
+HAS_TTY=1; command -v python3 > /dev/null 2>&1 || HAS_TTY=
+
+# io_tty RESPOSTA comando...: o mesmo `io`, num terminal, respondendo à pergunta do backup que falhou
+io_tty () {
+  local answer=$1; shift
+  python3 -I "$FIX/tty.py" "$answer" 'Continue WITHOUT a backup' \
+    docker run --rm -it --network "$NET" --add-host o1289077.ingest.sentry.io:127.0.0.1 --env-file "$FIX/env" \
+      -v "$FIX/data":/data -v /var/run/docker.sock:/var/run/docker.sock "$IMAGE" php /app/run.php "$@" 2>&1
+}
+
 running () { docker ps -q --filter "label=com.docker.compose.project=$NS" --filter status=running | wc -l | tr -d ' '; }
 cid () { docker ps -q --no-trunc --filter "label=com.docker.compose.project=$NS" --filter "label=com.docker.compose.service=$1"; }
 runs () { docker inspect --format '{{.Image}}' "$(cid "$1")"; }
@@ -178,7 +234,30 @@ publish "$WEB" 3
 io update $B > "$FIX/out"
 grep -q 'The backup before the update failed' "$FIX/out" && grep -q 'no container was recreated' "$FIX/out"; check 'backup que falha: erro e aviso' $?
 [ "$(cid web)" = "$W" ] && [ "$(running)" = "2" ]; check 'backup que falha: nenhum contêiner recriado' $?
+grep -q "run the command again with '--no-backup'" "$FIX/out" && ! grep -q 'Continue WITHOUT a backup' "$FIX/out"; check 'backup que falha, fora de terminal: aponta o --no-backup e não pergunta' $?
+
+# 6b. backup que falha, em terminal: a pergunta decide
+N=$(backups)
+if [ -n "$HAS_TTY" ]; then
+  io_tty n update $B > "$FIX/out"
+  grep -q 'Continue WITHOUT a backup' "$FIX/out" && grep -q 'no container was recreated' "$FIX/out" && [ "$(cid web)" = "$W" ]; check 'update em terminal, resposta não: nada recriado' $?
+  io_tty y update $B > "$FIX/out"
+  grep -q 'Going on without a backup, as confirmed' "$FIX/out" && [ "$(cid web)" != "$W" ] && [ "$(runs web)" = "$(points "$WEB")" ]; check 'update em terminal, resposta sim: o web é recriado com a imagem nova' $?
+  [ "$(backups)" = "$N" ] && [ "$(cid db)" = "$D" ]; check 'update em terminal, resposta sim: sem backup novo e o db intacto' $?
+  W=$(cid web)
+else
+  echo 'skip casos de terminal do update (sem python3 na máquina)'
+fi
+
+# 6c. --no-backup: recria sem rodar o backup (que continuaria falhando)
+publish "$WEB" 4
+io update $B --no-backup > "$FIX/out"
+grep -q "'--no-backup': the containers will be recreated" "$FIX/out" && ! grep -q 'Trying to execute backup service' "$FIX/out"; check 'update --no-backup: avisa e não roda o backup' $?
+[ "$(cid web)" != "$W" ] && [ "$(runs web)" = "$(points "$WEB")" ] && [ "$(backups)" = "$N" ]; check 'update --no-backup: o web é recriado com a imagem nova' $?
+io update --no-backup > "$FIX/out"; grep -q "Specify the builds" "$FIX/out"; check 'update: --no-backup sem as builds é recusado' $?
+W=$(cid web)
 docker run --rm -v ${NS}_data:/data busybox rm -f /data/fail-backup
+publish "$WEB" 5
 
 # 7. daemon: só com "auto": { "update": true }; e-mail só quando atualizou
 io update:daemon --all > "$FIX/out"
@@ -205,10 +284,53 @@ grep -q "Stopped with 'io stop': nothing to update" "$FIX/out" && [ "$(running)"
 
 # 9. o `restart --upgrade` (que divide o pull com o update) segue funcionando e traz a build de volta com a imagem nova
 publish "$WEB" 9
+N=$(backups)
 io restart $B --upgrade > "$FIX/out"
+grep -q 'No container of the build is running' "$FIX/out" && [ "$(backups)" = "$N" ]; check 'restart --upgrade de build parada: volta sem backup, com aviso' $?
 grep -q 'was successfully upgraded and restarted' "$FIX/out" && [ "$(running)" = "2" ]; check 'io restart --upgrade traz a build de volta' $?
 grep -q -- 'build --pull --no-cache' "$FIX/out" && grep -q -- 'up -d --force-recreate' "$FIX/out"; check 'restart --upgrade: pull, build sem cache e --force-recreate, como antes' $?
 [ "$(runs web)" = "$(points "$WEB")" ]; check 'restart --upgrade: o web roda a imagem nova' $?
+
+# 10. restart --upgrade com a build no ar: backup depois do pull e do build, antes de recriar
+W=$(cid web); D=$(cid db); N=$(backups)
+io restart $B --upgrade > "$FIX/out"
+[ "$(backups)" = "$((N + 1))" ] && [ "$(cid web)" != "$W" ] && [ "$(cid db)" != "$D" ] && [ "$(running)" = "2" ]; check 'restart --upgrade: backup feito e todos os contêineres recriados' $?
+line () { grep -n -- "$1" "$FIX/out" | head -1 | cut -d: -f1; }
+[ "$(line 'build --pull --no-cache')" -lt "$(line 'Backup service ran successfully')" ] && [ "$(line 'Backup service ran successfully')" -lt "$(line 'up -d --force-recreate')" ]; check 'restart --upgrade: o backup vem depois do build e antes do up' $?
+W=$(cid web); D=$(cid db); N=$(backups)
+io restart $B > "$FIX/out"
+grep -q 'was successfully restarted' "$FIX/out" && ! grep -q 'Backing up' "$FIX/out" && [ "$(backups)" = "$N" ]; check 'restart simples: sem backup' $?
+
+# 11. restart --upgrade com backup que falha
+docker run --rm -v ${NS}_data:/data busybox touch /data/fail-backup
+io restart $B --upgrade > "$FIX/out"
+grep -q 'The backup before the upgrade failed' "$FIX/out" && grep -q 'no container was recreated' "$FIX/out"; check 'restart --upgrade com backup que falha: erro e aviso' $?
+grep -q "run the command again with '--no-backup'" "$FIX/out" && ! grep -q 'Continue WITHOUT a backup' "$FIX/out"; check 'restart --upgrade fora de terminal: aponta o --no-backup e não pergunta' $?
+[ "$(cid web)" = "$W" ] && [ "$(cid db)" = "$D" ] && [ "$(running)" = "2" ]; check 'restart --upgrade com backup que falha: nenhum contêiner recriado' $?
+! grep -q -- 'up -d --force-recreate' "$FIX/out"; check 'restart --upgrade com backup que falha: o up não roda' $?
+if [ -n "$HAS_TTY" ]; then
+  io_tty n restart $B --upgrade > "$FIX/out"
+  grep -q 'Continue WITHOUT a backup' "$FIX/out" && [ "$(cid web)" = "$W" ] && [ "$(running)" = "2" ]; check 'restart --upgrade em terminal, resposta não: nada recriado' $?
+  io_tty y restart $B --upgrade > "$FIX/out"
+  grep -q 'was successfully upgraded and restarted' "$FIX/out" && [ "$(cid web)" != "$W" ] && [ "$(backups)" = "$N" ]; check 'restart --upgrade em terminal, resposta sim: recriado sem backup' $?
+  W=$(cid web)
+else
+  echo 'skip casos de terminal do restart --upgrade (sem python3 na máquina)'
+fi
+io restart $B --upgrade --no-backup > "$FIX/out"
+grep -q "'--no-backup': the containers will be recreated" "$FIX/out" && ! grep -q 'Trying to execute backup service' "$FIX/out" && [ "$(cid web)" != "$W" ] && [ "$(backups)" = "$N" ]; check 'restart --upgrade --no-backup: recria sem rodar o backup' $?
+W=$(cid web)
+io restart $B --no-backup --upgrade > "$FIX/out"
+[ "$(cid web)" != "$W" ] && [ "$(running)" = "2" ]; check 'as opções valem em qualquer ordem' $?
+docker run --rm -v ${NS}_data:/data busybox rm -f /data/fail-backup
+[ "$(docker run --rm -v ${NS}_data:/data busybox cat /data/state)" = "externo" ]; check 'dado do volume intacto depois de tudo' $?
+
+# 12. opções do restart
+W=$(cid web)
+io restart $B --no-backup > "$FIX/out"; grep -q "only makes sense with '--upgrade'" "$FIX/out" && [ "$(cid web)" = "$W" ]; check 'restart: --no-backup sem --upgrade é recusado' $?
+io restart --no-backup > "$FIX/out"; grep -q "Specify the builds" "$FIX/out"; check 'restart: --no-backup sem as builds é recusado' $?
+io restart $B --upgrade --force > "$FIX/out"; grep -q "Unknown parameter '--force'" "$FIX/out" && [ "$(cid web)" = "$W" ]; check 'restart: opção desconhecida é recusada' $?
+[ -z "$(ls "$FIX/data/.busy" 2> /dev/null)" ]; check 'nenhuma trava por build fica para trás' $?
 
 echo
 if [ "$fail" -eq 0 ]; then echo "update-integration: all ok"; else echo "update-integration: $fail FAIL"; exit 1; fi

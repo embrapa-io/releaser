@@ -69,7 +69,7 @@ foreach ($_builds as $_build => $_b)
 
 	try
 	{
-		(self::singleton ()->orchestrator)::restart ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $_upgrade);
+		(self::singleton ()->orchestrator)::restart ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $_upgrade, $_backup, self::backupFailed ());
 	}
 	catch (Exception $e)
 	{

@@ -366,7 +366,7 @@ class DockerCompose extends Orchestrator
             throw new Exception ('Error when trying to stop containers with Docker Compose');
     }
 
-    static public function restart ($path, $namespace, $upgrade = FALSE)
+    static public function restart ($path, $namespace, $upgrade = FALSE, $backup = TRUE, callable $onBackupFailure = NULL)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -421,6 +421,16 @@ class DockerCompose extends Orchestrator
         // (visto com o containerd image store). Os CLI_SERVICES ficam no perfil `cli` e não sobem.
         self::upgradeImages ();
 
+        // Backup antes de recriar (desde `1.26.11-8`), depois do pull e do build: uma falha de build não custa um backup,
+        // e o backup fica o mais perto possível da troca. O `restart --upgrade` também é o comando de socorro: sem nenhum
+        // contêiner no ar (build parada ou caída) não há de onde tirar o backup, e a build volta assim mesmo.
+        if ($backup && !self::anyRunning ($namespace))
+            echo "WARNING > No container of the build is running (stopped with 'io stop'?): there is nothing to take a backup from. Going on without a backup. \n";
+        else
+            self::backupBefore ($path, $namespace, 'upgrade', $backup, $onBackupFailure);
+
+        chdir ($path);
+
         echo "INFO > Recreating the containers with the renewed images... \n";
 
         echo 'COMMAND > '. self::env ('.env.io') .' '. self::DOCKER_COMPOSE .' up -d --force-recreate'."\n";
@@ -437,12 +447,12 @@ class DockerCompose extends Orchestrator
      * `io update`: baixa as imagens de registro e recria só os serviços cuja imagem mudou (tags *floating*, como
      * `latest`, `2` ou `v3`). Diferente do `restart --upgrade`: não reconstrói os serviços `build:` (o build move a
      * tag mesmo sem mudar o conteúdo, e a build seria recriada toda noite) nem usa `--force-recreate` (sem imagem
-     * nova, nenhum contêiner é tocado). Antes de recriar, roda o backup da build: sem serviço `backup`, segue; com
-     * backup que falha, nada é recriado.
+     * nova, nenhum contêiner é tocado). Antes de recriar, roda o backup da build (`Orchestrator::backupBefore`): sem
+     * serviço `backup`, segue; com backup que falha, nada é recriado, a menos que `$onBackupFailure` mande seguir.
      *
      * @return array serviços atualizados (ou que seriam, no dry run): [serviço => [reference, running, available]]
      */
-    static public function update ($path, $namespace, $dryRun = FALSE)
+    static public function update ($path, $namespace, $dryRun = FALSE, $backup = TRUE, callable $onBackupFailure = NULL)
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -464,22 +474,7 @@ class DockerCompose extends Orchestrator
 
         if ($dryRun) return $outdated;
 
-        echo "INFO > Backing up the build before recreating the service(s)... \n";
-
-        try
-        {
-            self::backup ($path, $namespace);
-
-            echo "SUCCESS > Backup service ran successfully! \n";
-        }
-        catch (SkipException $e)
-        {
-            echo "INFO > ". $e->getMessage () .". Nothing to back up. \n";
-        }
-        catch (Exception $e)
-        {
-            throw new Exception ('The backup before the update failed ('. $e->getMessage () .'): no container was recreated');
-        }
+        self::backupBefore ($path, $namespace, 'update', $backup, $onBackupFailure);
 
         chdir ($path);
 

@@ -1,10 +1,10 @@
 <?php
 
 /**
- * `io update <builds|--all> [--dry-run]`: mantém a versão implantada e traz as imagens de registro para o conteúdo
+ * `io update <builds|--all> [--dry-run] [--no-backup]`: mantém a versão implantada e traz as imagens de registro para o conteúdo
  * mais recente, recriando só os serviços cuja imagem mudou (ver `DockerCompose::update`). No daemon (diário, depois
  * de `backup`, `cleaner` e `cloud`), só as builds com `auto.update` = true; e-mail por build apenas quando algo foi
- * atualizado ou falhou. Variáveis do escopo: $_builds, $_daemon, $_data, $_dryRun.
+ * atualizado ou falhou. Variáveis do escopo: $_builds, $_daemon, $_data, $_dryRun, $_backup (FALSE = `--no-backup`).
  */
 
 $_apps = $_data . DIRECTORY_SEPARATOR .'apps';
@@ -92,7 +92,7 @@ foreach ($_builds as $_build => $_b)
 
 		try
 		{
-			$changed = (self::singleton ()->orchestrator)::update ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $_dryRun);
+			$changed = (self::singleton ()->orchestrator)::update ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), $_dryRun, $_backup, self::backupFailed ());
 		}
 		catch (SkipException $e)
 		{

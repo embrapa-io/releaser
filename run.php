@@ -121,27 +121,29 @@ $_operations = [
 		'Restart builds (--upgrade renews the images)',
 		'Controller::restart',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--upgrade | --update]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--upgrade | --update] [--no-backup]',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
-			'proj-b/web@release --upgrade'
+			'proj-b/web@release --upgrade',
+			'proj-b/web@release --upgrade --no-backup'
 		],
 		'deploy',
-		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' from scratch over a renewed base image (build --pull --no-cache) and recreates the containers; then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
+		'Start stopped or restart running builds, keeping the deployed version. With --upgrade (synonym: --update), renews the images as the platform deployer does: pulls the images of the services (floating tags, such as \'latest\' or \'8.3-apache\', get the latest content), rebuilds the services with \'build:\' from scratch over a renewed base image (build --pull --no-cache) and recreates the containers. Before recreating them, runs the backup service of the build: if the backup fails, nothing is recreated (in a terminal, the command asks whether to go on without it); with --no-backup, the backup is skipped; a build with no container running (stopped or down) comes back without a backup. Then scans the upgraded builds for CVEs and reports them to the platform (as \'io cve\'), unless \'stats.cve\' is false. Use it to apply security fixes published in the base images without a new tag.'
 	),
 	'update' => new Operation (
 		'Update the images of builds (floating tags)',
 		'Controller::update',
 		1,
-		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run]',
+		'[BUILD-1,BUILD-2,...,BUILD-N | --all] [--dry-run] [--no-backup]',
 		[
 			'proj-a/app-1@beta,proj-b/web@release,proj-a/app-2@alpha',
 			'--all',
-			'proj-b/web@release --dry-run'
+			'proj-b/web@release --dry-run',
+			'proj-b/web@release --no-backup'
 		],
 		'deploy',
-		'Keep the deployed version and bring the images up to date: pulls the registry images of the services and recreates only the services whose image has new content (floating tags, such as \'latest\', \'2\' or \'17-alpine\'). Services with \'build:\' are not rebuilt and services with no new image are not touched (for that, use \'io restart --upgrade\'). Before recreating, runs the backup service of the build; if the backup fails, nothing is recreated. Afterwards, scans the build for CVEs. With --dry-run, only pulls and shows what would be recreated. Runs every night for the builds with "auto": { "update": true } in their file (default: false), with an e-mail only when something was updated or failed. Docker Compose only.'
+		'Keep the deployed version and bring the images up to date: pulls the registry images of the services and recreates only the services whose image has new content (floating tags, such as \'latest\', \'2\' or \'17-alpine\'). Services with \'build:\' are not rebuilt and services with no new image are not touched (for that, use \'io restart --upgrade\'). Before recreating, runs the backup service of the build; if the backup fails, nothing is recreated (in a terminal, the command asks whether to go on without it). With --no-backup, the backup is skipped (not accepted by the nightly run). Afterwards, scans the build for CVEs. With --dry-run, only pulls and shows what would be recreated. Runs every night for the builds with "auto": { "update": true } in their file (default: false), with an e-mail only when something was updated or failed. Docker Compose only.'
 	),
 	'rollback' => new Operation (
 		'Roll a build back to a previous version',

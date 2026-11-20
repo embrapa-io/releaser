@@ -183,40 +183,91 @@ class Controller
         require self::PATH .'remove.php';
     }
 
-    static public function restart ($slice, $flag = NULL)
+    static public function restart ($slice, ...$flags)
     {
         global $_daemon, $_data;
 
         // `--upgrade` (ou `--update`): renova as imagens antes de subir, como o deployer da plataforma. Não há
         // `--remove` (decisão de out/2026): o `down --volumes` do deployer apagaria volumes não externos.
-        if (in_array (trim ((string) $slice), [ '--upgrade', '--update' ]))
+        // `--no-backup` (desde `1.26.11-8`): dispensa o backup que o `--upgrade` faz antes de recriar os contêineres.
+        if (in_array (trim ((string) $slice), [ '--upgrade', '--update', '--no-backup' ]))
             throw new Exception ("Specify the builds (or '--all') before '". trim ($slice) ."'. E.g.: io restart proj-a/app-1@beta ". trim ($slice));
 
-        if ($flag !== NULL && !in_array (trim ((string) $flag), [ '--upgrade', '--update' ]))
-            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'restart' is '--upgrade' (or its synonym '--update')");
+        $_upgrade = FALSE;
+        $_backup = TRUE;
 
-        $_upgrade = $flag !== NULL;
+        foreach ($flags as $flag)
+            if (in_array (trim ((string) $flag), [ '--upgrade', '--update' ])) $_upgrade = TRUE;
+            elseif (trim ((string) $flag) === '--no-backup') $_backup = FALSE;
+            else throw new Exception ("Unknown parameter '". $flag ."'. The options accepted by 'restart' are '--upgrade' (or its synonym '--update') and, with it, '--no-backup'");
+
+        if (!$_backup && !$_upgrade)
+            throw new Exception ("'--no-backup' only makes sense with '--upgrade': a plain restart keeps the images and takes no backup");
 
         $_builds = self::getBuilds ($_data, $slice);
 
         require self::PATH .'restart.php';
     }
 
-    static public function update ($slice, $flag = NULL)
+    static public function update ($slice, ...$flags)
     {
         global $_daemon, $_data;
 
-        if (trim ((string) $slice) === '--dry-run')
-            throw new Exception ("Specify the builds (or '--all') before '--dry-run'. E.g.: io update proj-a/app-1@beta --dry-run");
+        if (in_array (trim ((string) $slice), [ '--dry-run', '--no-backup' ]))
+            throw new Exception ("Specify the builds (or '--all') before '". trim ($slice) ."'. E.g.: io update proj-a/app-1@beta ". trim ($slice));
 
-        if ($flag !== NULL && trim ((string) $flag) !== '--dry-run')
-            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'update' is '--dry-run'");
+        $_dryRun = FALSE;
+        $_backup = TRUE;
 
-        $_dryRun = $flag !== NULL;
+        foreach ($flags as $flag)
+            if (trim ((string) $flag) === '--dry-run') $_dryRun = TRUE;
+            elseif (trim ((string) $flag) === '--no-backup') $_backup = FALSE;
+            else throw new Exception ("Unknown parameter '". $flag ."'. The options accepted by 'update' are '--dry-run' and '--no-backup'");
+
+        // No cron o backup antes de recriar é sempre obrigatório.
+        if ($_daemon && !$_backup)
+            throw new Exception ("'--no-backup' is not accepted in daemon mode");
 
         $_builds = self::getBuilds ($_data, $slice);
 
         require self::PATH .'update.php';
+    }
+
+    /**
+     * O que fazer quando falha o backup que antecede a troca de imagens (`io update` e `io restart --upgrade`; ver
+     * `Orchestrator::backupBefore`). Em terminal, pergunta se segue sem ele: é a única pergunta desses comandos, e só
+     * aparece na falha. Fora de terminal não há a quem perguntar: para e aponta o `--no-backup`. No daemon devolve NULL
+     * (a falha aborta a build, sem pergunta).
+     *
+     * @return callable|null function ($motivo): bool — TRUE = seguir sem backup
+     */
+    static private function backupFailed ()
+    {
+        global $_daemon;
+
+        if ($_daemon) return NULL;
+
+        return function ($reason)
+        {
+            echo "WARNING > The backup of the build failed (". $reason ."). \n";
+
+            if (!(function_exists ('posix_isatty') && posix_isatty (STDIN) && posix_isatty (STDOUT)))
+            {
+                echo "INFO > Outside a terminal there is no one to ask: fix the backup, or run the command again with '--no-backup' to go on without it. \n";
+
+                return FALSE;
+            }
+
+            echo "Continue WITHOUT a backup? The containers will be recreated with the new images over the current data. (y/N): ";
+
+            $line = fgets (STDIN);
+
+            $yes = $line !== FALSE && in_array (strtolower (trim ($line)), [ 'y', 'yes', 's', 'sim' ]);
+
+            echo $yes ? "WARNING > Going on without a backup, as confirmed. \n" : "INFO > Not confirmed. \n";
+
+            return $yes;
+        };
     }
 
     static public function backup ($slice)

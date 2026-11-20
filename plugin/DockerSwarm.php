@@ -510,7 +510,7 @@ class DockerSwarm extends Orchestrator
         }
     }
 
-    static public function restart ($path, $name, $upgrade = FALSE)
+    static public function restart ($path, $name, $upgrade = FALSE, $backup = TRUE, callable $onBackupFailure = NULL)
     {
         chdir ($path);
 
@@ -542,6 +542,12 @@ class DockerSwarm extends Orchestrator
 
             unset ($return);
             unset ($output);
+
+            // Backup antes de derrubar a stack (ver Orchestrator::backupBefore). Aqui não se confere se há contêiner no
+            // ar: num Swarm de vários nós, os contêineres podem estar em outro nó.
+            self::backupBefore ($path, $name, 'upgrade', $backup, $onBackupFailure);
+
+            chdir ($path);
         }
 
         echo "INFO > Checking if stack ". $name ." is deployed...\n";
@@ -594,7 +600,7 @@ class DockerSwarm extends Orchestrator
     }
 
     // Restore em Swarm: os serviços de CLI rodam como serviço avulso, com o volume do nó onde a tarefa cair (fase 2).
-    static public function update ($path, $name, $dryRun = FALSE)
+    static public function update ($path, $name, $dryRun = FALSE, $backup = TRUE, callable $onBackupFailure = NULL)
     {
         throw new SkipException ("Update is not supported on Docker Swarm yet (use 'io restart --upgrade')");
     }

@@ -42,8 +42,9 @@ abstract class Orchestrator
     // Devolve o resultado do backup antes do deploy: TRUE feito, FALSE falhou (o deploy segue), NULL sem serviço 'backup'.
     abstract public static function deploy ($path, $namespace);
     abstract public static function stop ($path, $namespace, $down = FALSE);
-    abstract public static function restart ($path, $namespace, $upgrade = FALSE);
-    abstract public static function update ($path, $namespace, $dryRun = FALSE);
+    // $backup e $onBackupFailure: o backup que antecede a troca de imagens (ver backupBefore). Só vale com $upgrade.
+    abstract public static function restart ($path, $namespace, $upgrade = FALSE, $backup = TRUE, callable $onBackupFailure = NULL);
+    abstract public static function update ($path, $namespace, $dryRun = FALSE, $backup = TRUE, callable $onBackupFailure = NULL);
     abstract public static function backup ($path, $namespace);
     abstract public static function sanitize ($path, $namespace);
     abstract public static function restore ($path, $namespace, $file);
@@ -76,6 +77,64 @@ abstract class Orchestrator
 
         if ($return !== 0)
             throw new Exception (self::timedOut ($return) ? 'Timeout ('. self::UPGRADE_TIMEOUT .' s) when building images with Docker Compose' : 'Error when building images with Docker Compose');
+    }
+
+    /**
+     * Backup da build antes de trocar as imagens por baixo dos dados (`io update` e `io restart --upgrade`, desde
+     * `1.26.11-8`): uma imagem nova de banco pode não subir com os dados da anterior, e o backup da madrugada pode ter
+     * horas. Roda o serviço `backup` da app (`static::backup`), imediatamente antes de recriar os contêineres.
+     *
+     * - `$backup` FALSE (`--no-backup`): não roda, com WARNING.
+     * - Sem serviço `backup` (SkipException): segue.
+     * - Falhou: `$onFailure ($motivo)` decide (o controller pergunta em terminal; ver `Controller::backupFailed`).
+     *   Sem ela (daemon) ou com resposta negativa, lança exceção e **nenhum contêiner é recriado**.
+     *
+     * @param string $action 'update' ou 'upgrade', para as mensagens
+     * @return bool|null TRUE: backup feito; NULL: nada a fazer (pulado ou sem serviço `backup`); FALSE: falhou e mandaram seguir
+     */
+    protected static function backupBefore ($path, $namespace, $action, $backup = TRUE, callable $onFailure = NULL)
+    {
+        if (!$backup)
+        {
+            echo "WARNING > '--no-backup': the containers will be recreated with the new images without a backup of the build. \n";
+
+            return NULL;
+        }
+
+        echo "INFO > Backing up the build before recreating the containers... \n";
+
+        try
+        {
+            static::backup ($path, $namespace);
+
+            echo "SUCCESS > Backup service ran successfully! \n";
+
+            return TRUE;
+        }
+        catch (SkipException $e)
+        {
+            echo "INFO > ". $e->getMessage () .". Nothing to back up. \n";
+
+            return NULL;
+        }
+        catch (Exception $e)
+        {
+            if ($onFailure !== NULL && $onFailure ($e->getMessage ()) === TRUE) return FALSE;
+
+            throw new Exception ('The backup before the '. $action .' failed ('. $e->getMessage () .'): no container was recreated');
+        }
+    }
+
+    /**
+     * Há algum contêiner da aplicação em execução? Sem nenhum (build parada com `io stop`, removida com `--down` ou
+     * caída), não há de onde tirar o backup: os serviços de backup leem a aplicação viva (`pg_dump`, `mongodump`…).
+     */
+    protected static function anyRunning ($namespace)
+    {
+        foreach (static::containers ($namespace) as $container)
+            if ($container ['state'] === 'running') return TRUE;
+
+        return FALSE;
     }
 
     /**

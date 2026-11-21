@@ -8,9 +8,6 @@ class DockerCompose extends Orchestrator
     // Único bind mount que a validação aceita num serviço, e só em build autorizada (ver checkDockerComposeFile).
     const DOCKER_SOCKET = '/var/run/docker.sock';
 
-    // Caminhos do socket no host (em quase todo Linux, /var/run é um link para /run).
-    const DOCKER_SOCKET_PATHS = [ '/var/run/docker.sock', '/run/docker.sock' ];
-
     // rótulos que o Compose grava nos containers (ver Orchestrator::containers)
     const STACK_LABEL = 'com.docker.compose.project';
     const SERVICE_LABEL = 'com.docker.compose.service';
@@ -353,18 +350,78 @@ class DockerCompose extends Orchestrator
             $warning = TRUE;
         }
 
-        // Os serviços CLI (perfil 'cli') ficam fora do compose interpolado acima, e os volumes deles nunca foram
-        // conferidos: um 'backup' que monta o socket passava sem ninguém ver. Em build autorizada, o mesmo aviso dos
-        // demais serviços; sem autorização, por ora só avisa (recusar agora derrubaria o deploy de builds que já fazem
-        // isso), e vira erro numa versão futura.
-        foreach (self::socketMounts (self::interpolated ('.env.sh'), self::CLI_SERVICES) as $name)
+        // Os serviços que só existem com o perfil 'cli' (backup, restore, sanitize, test e o que eles puxarem por
+        // 'depends_on') ficam fora do compose interpolado acima, e até a 1.26.11-9 os volumes deles não eram conferidos.
+        // Valem as mesmas regras dos demais: todo volume declarado é externo e da build, e nenhum caminho do servidor é
+        // montado direto pelo compose (bind mount), salvo o socket do Docker em build autorizada. Pasta do servidor entra
+        // por volume externo, criado por quem o administra (é assim o de backup: 'docker volume create --driver local
+        // --opt type=none --opt o=bind --opt device=<pasta> <volume>').
+        $profile = self::interpolated ('.env.sh');
+
+        if (!is_array ($profile) || !isset ($profile ['services']) || !is_array ($profile ['services']))
         {
-            if ($socket)
-                echo "WARNING > CLI service '". $name ."' mounts the Docker socket, authorized for this build ('allow.socket' in the build file): whoever controls this service controls this whole server. \n";
-            else
-                echo "WARNING > CLI service '". $name ."' mounts the Docker socket, and this build is not authorized to: whoever controls this service controls this whole server, as root. It will become an ERROR in a future version. ". self::howToAllowSocket ($namespace) ." \n";
+            echo "WARNING > Unable to interpret docker-compose.yaml with the CLI services (profile 'cli'): their volumes were NOT checked. \n";
 
             $warning = TRUE;
+        }
+        else
+        {
+            if (isset ($profile ['volumes']) && is_array ($profile ['volumes']))
+                foreach ($profile ['volumes'] as $name => $volume)
+                {
+                    if (in_array ($name, $volumes)) continue;
+
+                    if (!is_array ($volume) || !array_key_exists ('external', $volume) || !(bool) $volume ['external'])
+                    {
+                        echo "ERROR > Volume '". $name ."' (used by the CLI services) is NOT 'external'! See https://docs.docker.com/compose/compose-file/#external-1 for more info. \n";
+
+                        return FALSE;
+                    }
+
+                    $aux = explode ('_', (string) ($volume ['name'] ?? ''));
+
+                    array_pop ($aux);
+
+                    if (implode ('_', $aux) != $namespace)
+                    {
+                        echo "ERROR > Volume '". $name ."' (used by the CLI services) is pointing to '". ($volume ['name'] ?? '') ."'! All mounted volumes must belong to the application context. \n";
+
+                        return FALSE;
+                    }
+                }
+
+            foreach ($profile ['services'] as $name => $service)
+            {
+                // os serviços da aplicação já foram conferidos acima
+                if (array_key_exists ($name, $config ['services'])) continue;
+
+                if (!is_array ($service) || !isset ($service ['volumes']) || !is_array ($service ['volumes'])) continue;
+
+                foreach ($service ['volumes'] as $volume)
+                {
+                    if (!is_array ($volume) || ($volume ['type'] ?? '') !== 'bind') continue;
+
+                    if (($volume ['source'] ?? '') === self::DOCKER_SOCKET && ($volume ['target'] ?? '') === self::DOCKER_SOCKET)
+                    {
+                        if (!$socket)
+                        {
+                            echo "ERROR > CLI service '". $name ."' mounts the Docker socket (". self::DOCKER_SOCKET ."), and this build is not authorized to: whoever controls this service controls this whole server, as root. ". self::howToAllowSocket ($namespace) ." \n";
+
+                            return FALSE;
+                        }
+
+                        echo "WARNING > CLI service '". $name ."' mounts the Docker socket (". self::DOCKER_SOCKET ."), authorized for this build ('allow.socket' in the build file): whoever controls this service controls this whole server. \n";
+
+                        $warning = TRUE;
+
+                        continue;
+                    }
+
+                    echo "ERROR > CLI service '". $name ."' mounts the server path '". ($volume ['source'] ?? '') ."' directly (bind mount). Services can only mount external volumes of the build. To use a directory of the server, whoever administers it creates an external volume bound to it (docker volume create --driver local --opt type=none --opt o=bind --opt device=<directory> ". $namespace ."_<name>) and the docker-compose.yaml mounts that volume by name. \n";
+
+                    return FALSE;
+                }
+            }
         }
 
         // A validação dos volumes confere só o nome. Volume que não existe no servidor derruba o 'up' (dados) ou faz o
@@ -597,34 +654,6 @@ class DockerCompose extends Orchestrator
         unlink ($out);
 
         return is_array ($config) ? $config : FALSE;
-    }
-
-    /*
-     * Serviços do compose interpolado que montam o socket do Docker do host, seja qual for o caminho dentro do
-     * contêiner. Com $only, só entre os serviços dados. Pura: recebe o compose já interpretado.
-     */
-    static public function socketMounts ($config, $only = NULL)
-    {
-        $found = [];
-
-        if (!is_array ($config) || !isset ($config ['services']) || !is_array ($config ['services'])) return $found;
-
-        foreach ($config ['services'] as $name => $service)
-        {
-            if (is_array ($only) && !in_array ($name, $only, TRUE)) continue;
-
-            if (!is_array ($service) || !isset ($service ['volumes']) || !is_array ($service ['volumes'])) continue;
-
-            foreach ($service ['volumes'] as $volume)
-                if (is_array ($volume) && ($volume ['type'] ?? '') === 'bind' && in_array (rtrim ((string) ($volume ['source'] ?? ''), '/'), self::DOCKER_SOCKET_PATHS, TRUE))
-                {
-                    $found [] = (string) $name;
-
-                    break;
-                }
-        }
-
-        return $found;
     }
 
     /*

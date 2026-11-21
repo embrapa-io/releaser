@@ -6,8 +6,11 @@
 # caminho padrão dos dois lados (/var/run/docker.sock:/var/run/docker.sock), e só em build AUTORIZADA por quem
 # administra o servidor ("allow": { "socket": true } no arquivo da build), quando passa com um aviso. É o que o
 # boilerplate 'arcane' (painel de contêineres) precisa; nos clusters compartilhados da plataforma, o deployer recusa.
-# A autorização não abre nenhum outro bind mount. Nos serviços CLI (perfil 'cli'), o socket sem autorização por ora só
-# gera aviso. No fim, o deploy: recusado sem autorização (nada sobe) e, autorizado, o serviço sobe com o socket.
+# A autorização não abre nenhum outro bind mount. Os serviços CLI (perfil 'cli': backup, restore, sanitize e o que eles
+# puxarem por depends_on) seguem as mesmas regras: nenhum caminho do servidor montado direto, volumes externos e da
+# build, socket só com autorização. Pasta do servidor entra por volume externo criado por quem administra o servidor
+# (é assim o de backup), e isso continua valendo. No fim, o deploy: recusado sem autorização (nada sobe) e, autorizado,
+# o serviço sobe com o socket.
 #
 #   tests/validate-integration.sh
 set -euo pipefail
@@ -52,7 +55,8 @@ PHP
 YES='{"allow":{"socket":true}}'
 NO='{"allow":{"socket":false}}'
 
-# $1 = nome do caso, $2 = linhas de 'volumes:' do serviço 'panel', $3 = volumes do serviço CLI 'backup' (opcional)
+# $1 = nome do caso, $2 = linhas de 'volumes:' do serviço 'panel', $3 = volumes do serviço CLI 'backup' (opcional),
+# $4 = linhas a mais em 'volumes:' da raiz (opcional), $5 = serviços a mais (opcional)
 compose () {
   mkdir -p "$FIX/$1/.embrapa"
   echo '{ "boilerplate": "_", "platform": "native" }' > "$FIX/$1/.embrapa/settings.json"
@@ -76,11 +80,13 @@ $2
   sanitize:
     image: busybox
     profiles: [ cli ]
+${5:-}
 networks:
   stack: { external: true, name: $NS }
 volumes:
   data: { external: true, name: ${NS}_data }
   backup: { external: true, name: ${NS}_backup }
+${4:-}
 YAML
   printf 'COMPOSE_PROJECT_NAME=%s\nCOMPOSE_PROFILES=alpha\n' "$NS" > "$FIX/$1/.env.io"
   printf 'COMPOSE_PROJECT_NAME=%s\nCOMPOSE_PROFILES=cli\n' "$NS" > "$FIX/$1/.env.sh"
@@ -146,25 +152,59 @@ refused alias '      - /run/docker.sock:/var/run/docker.sock' 'socket por outro 
 refused mixed '      - /var/run/docker.sock:/var/run/docker.sock
       - /root:/root' 'socket junto com outro bind mount'
 
-# 5. serviços CLI: o socket sem autorização por ora só avisa (os volumes deles nunca foram conferidos)
-compose cli '      - data:/data' '[ "backup:/backup", "/var/run/docker.sock:/var/run/docker.sock" ]'
-validate cli
-grep -q '^RESULT: true' "$FIX/out" && grep -q "WARNING > CLI service 'backup' mounts the Docker socket, and this build is not authorized to" "$FIX/out" && grep -q 'It will become an ERROR in a future version' "$FIX/out" && grep -q '"allow": { "socket": true }' "$FIX/out"; check 'serviço CLI com o socket, sem autorização: válido, com aviso de erro futuro' $?
-grep -q 'VALID, but has some warnings' "$FIX/out"; check 'o aviso do serviço CLI entra no resultado da validação' $?
-validate cli "$YES"
-grep -q '^RESULT: true' "$FIX/out" && grep -q "WARNING > CLI service 'backup' mounts the Docker socket, authorized for this build" "$FIX/out" && ! grep -q 'future version' "$FIX/out"; check 'serviço CLI com o socket, em build autorizada: válido, com aviso' $?
+# 5. serviços CLI: as mesmas regras dos demais serviços
+DATA='      - data:/data'
 
-compose cli-other '      - data:/data' '[ "backup:/backup", "/run/docker.sock:/docker.sock:ro" ]'
-validate cli-other
-grep -q '^RESULT: true' "$FIX/out" && grep -q "CLI service 'backup' mounts the Docker socket, and this build is not authorized to" "$FIX/out"; check 'serviço CLI com o socket por /run e noutro caminho do contêiner: avisado' $?
+compose cli "$DATA" '[ "backup:/backup", "/var/run/docker.sock:/var/run/docker.sock" ]'
+validate cli
+grep -q '^RESULT: false' "$FIX/out" && grep -q "ERROR > CLI service 'backup' mounts the Docker socket (/var/run/docker.sock), and this build is not authorized to" "$FIX/out" && grep -q '"allow": { "socket": true }' "$FIX/out"; check 'serviço CLI com o socket, sem autorização: recusado, com a orientação' $?
+validate cli "$YES"
+grep -q '^RESULT: true' "$FIX/out" && grep -q "WARNING > CLI service 'backup' mounts the Docker socket (/var/run/docker.sock), authorized for this build" "$FIX/out" && grep -q 'VALID, but has some warnings' "$FIX/out"; check 'serviço CLI com o socket, em build autorizada: válido, com aviso' $?
+
+cli_refused () {  # $1 = caso, $2 = volumes do 'backup', $3 = rótulo, $4 = arquivo da build (opcional), $5 = volumes da raiz, $6 = serviços
+  compose "$1" "$DATA" "$2" "${5:-}" "${6:-}"
+  validate "$1" "${4:-$EMPTY}"
+  grep -q '^RESULT: false' "$FIX/out" && grep -qE "ERROR > (CLI service '[a-z]+' mounts the server path|Volume '[a-z]+' \(used by the CLI services\))" "$FIX/out"; check "$3: recusado" $?
+}
+
+cli_refused cli-etc '[ "backup:/backup", "/etc:/host-etc:ro" ]' 'serviço CLI com uma pasta do servidor (/etc)'
+grep -q "mounts the server path '/etc' directly (bind mount)" "$FIX/out" && grep -q "docker volume create --driver local --opt type=none --opt o=bind --opt device=<directory> ${NS}_<name>" "$FIX/out"; check 'a recusa diz o caminho e como trocar por um volume externo' $?
+cli_refused cli-root '[ "/:/host" ]' 'serviço CLI com a raiz do servidor'
+cli_refused cli-relative '[ "backup:/backup", "./docker/backup.sh:/backup.sh:ro" ]' 'serviço CLI com caminho relativo (script do repositório)'
+cli_refused cli-dir '[ "/root/backup:/backup" ]' 'serviço CLI com a pasta de backups montada direto, sem volume'
+cli_refused cli-other '[ "backup:/backup", "/run/docker.sock:/docker.sock" ]' 'serviço CLI com o socket por /run e noutro caminho, mesmo em build autorizada' "$YES"
+cli_refused cli-mixed '[ "/var/run/docker.sock:/var/run/docker.sock", "/root:/root" ]' 'serviço CLI com o socket e outra pasta, mesmo em build autorizada' "$YES"
+cli_refused cli-long '
+      - type: bind
+        source: /etc
+        target: /host-etc' 'serviço CLI com bind mount na forma longa'
+
+# volumes da raiz usados só pelos serviços CLI: externos e da build, como os demais
+cli_refused cli-opts '[ "host:/host" ]' 'volume do compose apontando para uma pasta do servidor (driver_opts), usado só no serviço CLI' "$EMPTY" '  host: { driver: local, driver_opts: { type: none, o: bind, device: /etc } }'
+cli_refused cli-named '[ "scratch:/scratch" ]' 'volume não externo usado só no serviço CLI' "$EMPTY" '  scratch: {}'
+cli_refused cli-foreign '[ "foreign:/foreign" ]' 'volume externo de outra build usado só no serviço CLI' "$EMPTY" '  foreign: { external: true, name: other_app_release_db }'
+
+# serviço de apoio no perfil 'cli' (subiria com o backup, por depends_on)
+cli_refused cli-helper '[ "backup:/backup" ]' 'serviço de apoio do perfil cli com uma pasta do servidor' "$EMPTY" '' '  helper:
+    image: busybox
+    profiles: [ cli ]
+    volumes: [ "/etc:/host-etc" ]'
+
+# o que continua valendo: volume externo criado por quem administra o servidor, mesmo ligado a uma pasta (o de backup)
+compose cli-volumes "$DATA" '[ "backup:/backup", "data:/data:ro", "extra:/extra" ]' "  extra: { external: true, name: ${NS}_extra }"
+validate cli-volumes
+grep -q '^RESULT: true' "$FIX/out" && ! grep -q "CLI service '" "$FIX/out" && ! grep -q 'used by the CLI services' "$FIX/out"; check 'serviço CLI só com volumes externos da build: válido, nenhum aviso sobre eles' $?
+
+docker volume create --driver local --opt type=none --opt o=bind --opt device=/tmp ${NS}_backup > /dev/null
+docker volume create ${NS}_data > /dev/null
+validate plain
+grep -q '^RESULT: true' "$FIX/out" && ! grep -q "CLI service '" "$FIX/out" && ! grep -q "External volume '${NS}_backup' does NOT exist" "$FIX/out"; check 'volume de backup ligado a uma pasta do servidor (type=none, o=bind), criado fora do compose: válido' $?
 
 validate plain
 ! grep -q "CLI service '" "$FIX/out" && ! grep -q 'Docker socket' "$FIX/out"; check 'serviços CLI sem o socket: nenhum aviso' $?
 
 # 6. deploy: sem autorização nada sobe; autorizado, o serviço sobe com o socket montado
 docker network create "$NS" > /dev/null 2>&1
-docker volume create ${NS}_data > /dev/null
-docker volume create ${NS}_backup > /dev/null
 
 validate socket "$EMPTY" deploy
 grep -q '^EXCEPTION: Invalid docker-compose.yaml' "$FIX/out" && grep -q 'is not authorized to' "$FIX/out" && [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$NS")" ]; check 'deploy sem autorização: recusado, nenhum contêiner criado' $?

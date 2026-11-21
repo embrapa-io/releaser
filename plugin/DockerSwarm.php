@@ -40,12 +40,13 @@ class DockerSwarm extends Orchestrator
     const DOCKER = '/usr/bin/docker';
     const DOCKER_COMPOSE = '/usr/bin/docker-compose';
 
-    static public function validate ($path, $namespace)
+    // $allow (autorizações da build) ainda não vale no Swarm: a validação daqui não confere os volumes dos serviços.
+    static public function validate ($path, $namespace, $allow = [])
     {
         return self::checkDockerSwarmFile ($path, $namespace);
     }
 
-    static public function deploy ($path, $name)
+    static public function deploy ($path, $name, $allow = [])
     {
         $valid = self::checkDockerSwarmFile ($path, $name);
 

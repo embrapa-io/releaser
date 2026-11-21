@@ -118,7 +118,7 @@ foreach ($_builds as $_build => $_b)
 
 	try
 	{
-		$isValid = (self::singleton ()->orchestrator)::validate ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
+		$isValid = (self::singleton ()->orchestrator)::validate ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), self::allow ($_b));
 	}
 	catch (Exception $e)
 	{

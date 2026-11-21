@@ -521,18 +521,29 @@ class Controller
         require self::PATH .'check.php';
     }
 
-    static public function install ($target = '', $flag = '')
+    static public function install (...$args)
     {
         global $_data;
 
-        // `io install --yes` (sem build) e `io install proj/app@stage --yes`
-        if (trim ((string) $target) === '--yes') { $flag = '--yes'; $target = ''; }
+        // `io install`, `io install --yes` (sem build) e `io install proj/app@stage [--yes] [--allow-socket]`, com as
+        // opções em qualquer ordem. `--allow-socket` (desde `1.26.11-10`) autoriza a build a montar o socket do Docker
+        // sem perguntar: é o jeito de autorizar junto com o `--yes`, que sozinho responde "não".
+        $_target = '';
+        $_yes = FALSE;
+        $_allowSocket = FALSE;
 
-        if ($flag !== '' && trim ((string) $flag) !== '--yes')
-            throw new Exception ("Unknown parameter '". $flag ."'. The only option accepted by 'install' is '--yes'");
+        foreach ($args as $arg)
+        {
+            $arg = trim ((string) $arg);
 
-        $_target = trim ((string) $target);
-        $_yes = trim ((string) $flag) === '--yes';
+            if ($arg === '') continue;
+
+            if ($arg === '--yes') $_yes = TRUE;
+            elseif ($arg === '--allow-socket') $_allowSocket = TRUE;
+            elseif (strpos ($arg, '-') === 0 || $_target !== '')
+                throw new Exception ("Unknown parameter '". $arg ."'. The options accepted by 'install' are '--yes' and '--allow-socket'");
+            else $_target = $arg;
+        }
 
         require self::PATH .'install.php';
     }
@@ -563,6 +574,25 @@ class Controller
             if (isset ($b->stats->$key) && $b->stats->$key === FALSE) $all [$key] = FALSE;
 
         return (object) $all;
+    }
+
+    /**
+     * O que quem administra o servidor autorizou a esta build, pelo atributo 'allow' do arquivo dela. Hoje só
+     * 'socket': montar o socket do Docker (/var/run/docker.sock), que dá o controle do servidor inteiro a quem
+     * controla o serviço. Só o booleano TRUE autoriza (nem "true", nem 1, nem 'allow: true'): na dúvida, não.
+     * A autorização é de quem escreve o arquivo da build (io install ou edição à mão no servidor), nunca de quem
+     * escreve o docker-compose.yaml da app.
+     */
+    static public function allow ($b)
+    {
+        $all = [ 'socket' => FALSE ];
+
+        if (!is_object ($b) || !isset ($b->allow) || !is_object ($b->allow)) return $all;
+
+        foreach ($all as $key => $trash)
+            if (isset ($b->allow->$key) && $b->allow->$key === TRUE) $all [$key] = TRUE;
+
+        return $all;
     }
 
     static public function mail ($addrs)

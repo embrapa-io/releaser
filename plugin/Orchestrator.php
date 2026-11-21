@@ -38,9 +38,11 @@ abstract class Orchestrator
         return in_array ($name, self::$orchestrators);
     }
 
-    abstract public static function validate ($path, $namespace);
+    // $allow: o que quem administra o servidor autorizou a esta build (Controller::allow, atributo 'allow' do arquivo da
+    // build). Hoje só 'socket' (montar o socket do Docker). Sem o argumento, nada é autorizado.
+    abstract public static function validate ($path, $namespace, $allow = []);
     // Devolve o resultado do backup antes do deploy: TRUE feito, FALSE falhou (o deploy segue), NULL sem serviço 'backup'.
-    abstract public static function deploy ($path, $namespace);
+    abstract public static function deploy ($path, $namespace, $allow = []);
     abstract public static function stop ($path, $namespace, $down = FALSE);
     // $backup e $onBackupFailure: o backup que antecede a troca de imagens (ver backupBefore). Só vale com $upgrade.
     abstract public static function restart ($path, $namespace, $upgrade = FALSE, $backup = TRUE, callable $onBackupFailure = NULL);

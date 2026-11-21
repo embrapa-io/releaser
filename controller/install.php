@@ -8,7 +8,8 @@
  * /data/builds/<projeto>_<app>_<estágio>.json. Não cria volumes nem rede
  * (fase 2) e não revisa builds já configuradas.
  *
- * Variáveis do escopo: $_target ('proj/app@stage' ou ''), $_yes (sem perguntas).
+ * Variáveis do escopo: $_target ('proj/app@stage' ou ''), $_yes (sem perguntas), $_allowSocket (autoriza a build a
+ * montar o socket do Docker sem perguntar).
  */
 
 $ask = function ($prompt, $default = '') use ($_yes)
@@ -189,7 +190,52 @@ echo "INFO > Sentry DSN: ". ($dsn !== '' ? 'ok' : 'MISSING') ." | Matomo site: "
 if (!empty ($info->deploy))
 	echo "INFO > The core already knows a version for this stage (". $info->deploy ."): another Releaser reported it before. \n";
 
-// 3. Portas e senhas
+// 3. Socket do Docker. Montá-lo dá o controle do servidor inteiro a quem controla o serviço: só um painel de
+// contêineres precisa. A validação do deploy recusa a montagem em build sem 'allow.socket' no arquivo dela, e é aqui
+// que quem administra o servidor autoriza (ou depois, editando o arquivo). O compose vem do GitLab, na mesma
+// referência das variáveis; a conferência é só do texto, para decidir se pergunta: quem decide é a validação.
+
+$mounts = NULL;
+
+try
+{
+	$repository = GitLab::singleton ()->reposSearch ($project .'/'. $app);
+
+	if (sizeof ($repository) && $ref !== '?')
+		$mounts = DockerCompose::mentionsSocket ((string) GitLab::singleton ()->getFile ($repository [0]['id'], 'docker-compose.yaml', $ref));
+}
+catch (Exception $e)
+{
+	$mounts = NULL;
+}
+
+$socket = FALSE;
+
+if ($_allowSocket)
+{
+	$socket = TRUE;
+
+	echo "WARNING > '--allow-socket': this build is authorized to mount the Docker socket (". DockerCompose::DOCKER_SOCKET ."). Whoever gets into a service that mounts it controls this whole server, as root. \n";
+
+	if ($mounts === FALSE)
+		echo "WARNING > The docker-compose.yaml of this app (at '". $ref ."') does not seem to mount the Docker socket: the authorization is not needed now, and a future version of the app can start using it without asking. \n";
+}
+elseif ($mounts === TRUE)
+{
+	echo "\n";
+	echo "WARNING > The docker-compose.yaml of this app (at '". $ref ."') mounts the Docker socket (". DockerCompose::DOCKER_SOCKET ."). Whoever gets into a service that mounts it controls this whole server, as root: every container, every volume and the host itself. A container management panel needs it; hardly anything else does. \n";
+
+	$socket = $confirm ('Authorize this build to mount the Docker socket?', FALSE);
+
+	if (!$socket)
+		echo "INFO > Not authorized: while the app mounts the socket, its deploy will be refused. To authorize later, set \"allow\": { \"socket\": true } in the build file. \n";
+
+	echo "\n";
+}
+elseif ($mounts === NULL)
+	echo "INFO > Unable to read the docker-compose.yaml of this app to check whether it mounts the Docker socket. If it does, the deploy will be refused until you set \"allow\": { \"socket\": true } in the build file. \n";
+
+// 4. Portas e senhas
 
 $randomize = $confirm ('Generate random values for PASSWORD and SECRET variables?', TRUE);
 
@@ -298,7 +344,7 @@ foreach ($variables as $v)
 	$env [$name] = (string) $value;
 }
 
-// 4. Grava
+// 5. Grava
 
 $definition = [
 	'project' => $project,
@@ -309,6 +355,7 @@ $definition = [
 	'matomo' => [ 'id' => $matomoId, 'token' => $matomoToken ],
 	'auto' => [ 'deploy' => TRUE, 'backup' => TRUE, 'sanitize' => TRUE, 'cleaner' => FALSE, 'cloud' => FALSE, 'update' => FALSE ],
 	'stats' => [ 'version' => TRUE, 'cve' => TRUE, 'health' => TRUE ],
+	'allow' => [ 'socket' => $socket ],
 	'env' => (object) $env
 ];
 
@@ -366,5 +413,8 @@ if (sizeof ($missing) || $missingBackup)
 	if ($missingBackup)
 		echo "INFO > The backup volume is bound to '". $backupDir ."' (BACKUP_DIR), shared by all builds of this server. If the app has no 'backup' service, it is not needed. \n\n";
 }
+
+if ($socket)
+	echo "WARNING > This build is authorized to mount the Docker socket (\"allow\": { \"socket\": true }): keep its panel off the internet and give access only to who administers this server. \n";
 
 echo "INFO > Review the file if needed, then deploy with: io deploy ". $build ." \n";

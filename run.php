@@ -263,14 +263,15 @@ $_operations = [
 		'Guided setup of a new build',
 		'Controller::install',
 		0,
-		'[BUILD] [--yes]',
+		'[BUILD] [--yes] [--allow-socket]',
 		[
 			'',
 			'proj-a/app-1@beta',
-			'proj-a/app-1@beta --yes'
+			'proj-a/app-1@beta --yes',
+			'infra/arcane@release --yes --allow-socket'
 		],
 		'setup',
-		'Guided setup of a new build: creates builds/<project>_<app>_<stage>.json with the team, Sentry, Matomo and variables fetched from the platform.'
+		'Guided setup of a new build: creates builds/<project>_<app>_<stage>.json with the team, Sentry, Matomo and variables fetched from the platform. When the docker-compose.yaml of the app mounts the Docker socket (a container management panel), asks whether to authorize it (\'allow.socket\' in the build file; default: no): without the authorization, the deploy of the build is refused. With --yes, nothing is asked and the socket is NOT authorized, unless --allow-socket is given.'
 	),
 	'split' => new Operation (
 		'Migrate builds.json to one file per build',

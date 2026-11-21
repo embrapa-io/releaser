@@ -5,16 +5,22 @@ class DockerCompose extends Orchestrator
     const DOCKER = '/usr/bin/docker';
     const DOCKER_COMPOSE = '/usr/bin/docker-compose';
 
+    // Único bind mount que a validação aceita num serviço, e só em build autorizada (ver checkDockerComposeFile).
+    const DOCKER_SOCKET = '/var/run/docker.sock';
+
+    // Caminhos do socket no host (em quase todo Linux, /var/run é um link para /run).
+    const DOCKER_SOCKET_PATHS = [ '/var/run/docker.sock', '/run/docker.sock' ];
+
     // rótulos que o Compose grava nos containers (ver Orchestrator::containers)
     const STACK_LABEL = 'com.docker.compose.project';
     const SERVICE_LABEL = 'com.docker.compose.service';
 
-    static public function validate ($path, $namespace)
+    static public function validate ($path, $namespace, $allow = [])
     {
-        return self::checkDockerComposeFile ($path, $namespace);
+        return self::checkDockerComposeFile ($path, $namespace, $allow);
     }
 
-    static public function deploy ($path, $namespace)
+    static public function deploy ($path, $namespace, $allow = [])
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -23,7 +29,7 @@ class DockerCompose extends Orchestrator
 
         unset ($return);
 
-        $valid = self::checkDockerComposeFile ($path, $namespace);
+        $valid = self::checkDockerComposeFile ($path, $namespace, $allow);
 
         if (!$valid)
             throw new Exception ('Invalid docker-compose.yaml file! Please check the configuration (volumes, ports, environment variables, etc.)');
@@ -143,7 +149,7 @@ class DockerCompose extends Orchestrator
         return $backup;
     }
 
-    static public function checkDockerComposeFile ($folder, $namespace)
+    static public function checkDockerComposeFile ($folder, $namespace, $allow = [])
     {
         exec ('type '. self::DOCKER_COMPOSE, $trash, $return);
 
@@ -253,6 +259,8 @@ class DockerCompose extends Orchestrator
             return FALSE;
         }
 
+        $socket = is_array ($allow) && ($allow ['socket'] ?? FALSE) === TRUE;
+
         foreach ($config ['services'] as $name => $service)
         {
             // Nome fixo de contêiner colide com outro de mesmo nome no servidor (o servidor da equipe costuma hospedar
@@ -274,12 +282,36 @@ class DockerCompose extends Orchestrator
 
             if (isset ($service ['volumes']))
                 foreach ($service ['volumes'] as $trash => $volume)
+                {
+                    // O socket do Docker é o único bind mount aceito, só no caminho padrão dos dois lados e só em build
+                    // autorizada por quem administra o servidor ('allow.socket' no arquivo da build): é o que um painel
+                    // de contêineres (o boilerplate 'arcane') precisa para administrar ESTE servidor. A autorização fica
+                    // no servidor, fora do repositório: quem publica uma tag da app não a concede a si mesmo. Qualquer
+                    // outro bind mount continua recusado. Nos clusters compartilhados da plataforma, o deployer recusa
+                    // também este (política de segurança do Compose).
+                    if (($volume ['type'] ?? '') === 'bind' && ($volume ['source'] ?? '') === self::DOCKER_SOCKET && ($volume ['target'] ?? '') === self::DOCKER_SOCKET)
+                    {
+                        if (!$socket)
+                        {
+                            echo "ERROR > Service '". $name ."' mounts the Docker socket (". self::DOCKER_SOCKET ."), and this build is not authorized to: whoever controls this service controls this whole server, as root. ". self::howToAllowSocket ($namespace) ." \n";
+
+                            return FALSE;
+                        }
+
+                        echo "WARNING > Service '". $name ."' mounts the Docker socket (". self::DOCKER_SOCKET ."), authorized for this build ('allow.socket' in the build file): whoever gets into this service controls this whole server. Keep it off the internet and give access only to who administers the server. \n";
+
+                        $warning = TRUE;
+
+                        continue;
+                    }
+
                     if (!in_array ($volume ['source'], $volumes))
                     {
                         echo "ERROR > Volume named '". $volume ['source'] ."' used by service '". $name ."' is not declared as external. \n";
 
                         return FALSE;
                     }
+                }
         }
 
         echo "INFO > All published PORTs are valid! \n";
@@ -317,6 +349,20 @@ class DockerCompose extends Orchestrator
         if (sizeof ($cli))
         {
             echo "WARNING > Some recommended CLI services were NOT FOUND in docker-compose.yaml: ". implode (", ", $cli) ."! Please check the configuration. \n";
+
+            $warning = TRUE;
+        }
+
+        // Os serviços CLI (perfil 'cli') ficam fora do compose interpolado acima, e os volumes deles nunca foram
+        // conferidos: um 'backup' que monta o socket passava sem ninguém ver. Em build autorizada, o mesmo aviso dos
+        // demais serviços; sem autorização, por ora só avisa (recusar agora derrubaria o deploy de builds que já fazem
+        // isso), e vira erro numa versão futura.
+        foreach (self::socketMounts (self::interpolated ('.env.sh'), self::CLI_SERVICES) as $name)
+        {
+            if ($socket)
+                echo "WARNING > CLI service '". $name ."' mounts the Docker socket, authorized for this build ('allow.socket' in the build file): whoever controls this service controls this whole server. \n";
+            else
+                echo "WARNING > CLI service '". $name ."' mounts the Docker socket, and this build is not authorized to: whoever controls this service controls this whole server, as root. It will become an ERROR in a future version. ". self::howToAllowSocket ($namespace) ." \n";
 
             $warning = TRUE;
         }
@@ -528,6 +574,68 @@ class DockerCompose extends Orchestrator
      * Lança SkipException se o serviço CLI não existir no docker-compose.yaml
      * interpolado (apps de frontend, por exemplo, não têm 'backup' nem 'sanitize').
      */
+    // Orientação comum às mensagens do socket do Docker em build não autorizada.
+    static private function howToAllowSocket ($namespace)
+    {
+        return "If that is intended (a container management panel, for instance) and you administer this server, set \"allow\": { \"socket\": true } in the build file (builds/". $namespace .".json in the Releaser data directory) and deploy again.";
+    }
+
+    /*
+     * Compose interpolado com o arquivo de ambiente dado ('.env.io' = serviços da aplicação, '.env.sh' = com os serviços
+     * CLI). Roda na pasta do clone; devolve FALSE se o compose não puder ser interpretado.
+     */
+    static private function interpolated ($env)
+    {
+        $out = tempnam ('.embrapa', '_');
+
+        exec (self::env ($env) .' '. self::DOCKER_COMPOSE .' config > '. $out .' 2> /dev/null', $trash, $return);
+
+        // O helper/error.php transforma o warning do yaml em exceção.
+        try { $config = $return === 0 ? yaml_parse_file ($out) : FALSE; }
+        catch (Exception $e) { $config = FALSE; }
+
+        unlink ($out);
+
+        return is_array ($config) ? $config : FALSE;
+    }
+
+    /*
+     * Serviços do compose interpolado que montam o socket do Docker do host, seja qual for o caminho dentro do
+     * contêiner. Com $only, só entre os serviços dados. Pura: recebe o compose já interpretado.
+     */
+    static public function socketMounts ($config, $only = NULL)
+    {
+        $found = [];
+
+        if (!is_array ($config) || !isset ($config ['services']) || !is_array ($config ['services'])) return $found;
+
+        foreach ($config ['services'] as $name => $service)
+        {
+            if (is_array ($only) && !in_array ($name, $only, TRUE)) continue;
+
+            if (!is_array ($service) || !isset ($service ['volumes']) || !is_array ($service ['volumes'])) continue;
+
+            foreach ($service ['volumes'] as $volume)
+                if (is_array ($volume) && ($volume ['type'] ?? '') === 'bind' && in_array (rtrim ((string) ($volume ['source'] ?? ''), '/'), self::DOCKER_SOCKET_PATHS, TRUE))
+                {
+                    $found [] = (string) $name;
+
+                    break;
+                }
+        }
+
+        return $found;
+    }
+
+    /*
+     * O texto de um docker-compose.yaml cita o socket do Docker? Só para o 'io install' decidir se pergunta pela
+     * autorização (o arquivo vem do GitLab, sem interpolar): quem decide de fato é a validação, no deploy.
+     */
+    static public function mentionsSocket ($yaml)
+    {
+        return (bool) preg_match ('#(^|[^A-Za-z0-9_.-])/(var/)?run/docker\.sock#m', (string) $yaml);
+    }
+
     /*
      * Volumes externos do compose (os da aplicação, pelo .env.io, e os dos serviços CLI, pelo .env.sh: o
      * 'docker-compose config' omite volume que nenhum serviço ativo usa) que não existem no servidor. Roda na pasta do

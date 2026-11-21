@@ -341,7 +341,7 @@ foreach ($_builds as $_build => $_b)
 
 	try
 	{
-		$_backup = (self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
+		$_backup = (self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), self::allow ($_b));
 	}
 	catch (Exception $e)
 	{

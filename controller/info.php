@@ -67,6 +67,10 @@ foreach ($_builds as $_build => $_b)
 		echo "Report of ". $signal .": ". ($report [$signal]['status'] === 200 ? 'accepted' : 'REFUSED ('. $report [$signal]['status'] .': '. $report [$signal]['reason'] .')') ." at ". $report [$signal]['at'] ." \n";
 	}
 
+	// autorizações que quem administra o servidor deu à build (atributo 'allow' do arquivo dela)
+	if (self::allow ($_b) ['socket'])
+		echo "Docker socket: this build is AUTHORIZED to mount it (allow.socket = true) \n";
+
 	// última cópia em nuvem (io cloud / cloud:daemon), de /data/.cloud/<p>_<a>_<s>.json
 	$cloud = Cloud::last ($_b->project, $_b->app, $_b->stage);
 

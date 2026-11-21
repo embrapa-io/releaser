@@ -243,7 +243,7 @@ try
 
 	try
 	{
-		(self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]));
+		(self::singleton ()->orchestrator)::deploy ($clone, implode ('_', [$_b->project, $_b->app, $_b->stage]), self::allow ($_b));
 	}
 	catch (Exception $e)
 	{

@@ -90,6 +90,8 @@ foreach ($targets as $_build => $t)
 
 	$services = [];
 
+	$digests = [];
+
 	$failed = FALSE;
 
 	foreach ($t ['images'] as $service => $image)
@@ -114,6 +116,9 @@ foreach ($targets as $_build => $t)
 
 		$services [$service] = $cache [$image];
 
+		// Digests da imagem varrida: o core os compara com o digest atual da tag no registro (alerta de CVE).
+		if (sizeof (Trivy::digests ($image))) $digests [$service] = Trivy::digests ($image);
+
 		$critical = sizeof (array_filter ($cache [$image], function ($v) { return $v ['severity'] === 'CRITICAL'; }));
 
 		echo "INFO > ". str_pad ($service, 20) . $critical ." critical, ". (sizeof ($cache [$image]) - $critical) ." high \n";
@@ -130,7 +135,8 @@ foreach ($targets as $_build => $t)
 		'project' => $t ['b']->project,
 		'app' => $t ['b']->app,
 		'stage' => $t ['b']->stage,
-		'cve' => [ 'services' => $services ]
+		// 'digests' só vai quando há algum: vazio, o PHP o serializaria como lista ([]), e o core espera um objeto.
+		'cve' => [ 'services' => $services ] + (sizeof ($digests) ? [ 'digests' => $digests ] : [])
 	];
 }
 

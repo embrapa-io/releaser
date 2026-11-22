@@ -68,6 +68,45 @@ class Trivy
         if (!is_object ($json) || !isset ($json->Results) || !is_array ($json->Results))
             throw new Exception ("invalid output from Trivy");
 
+        self::$digests [$image] = self::repoDigests ($json);
+
+        return self::vulnerabilities ($json);
+    }
+
+    // Digests da última varredura de cada imagem (ver digests ()).
+    static private $digests = [];
+
+    /**
+     * Digests ("sha256:…") com que a imagem varrida foi puxada do registro, do `Metadata.RepoDigests` da última
+     * varredura dela. O core os compara com o digest atual da tag para o alerta de CVE não mandar reiniciar quando o
+     * fornecedor ainda não publicou imagem nova. Imagem construída no host não tem nenhum.
+     */
+    static public function digests ($image)
+    {
+        return self::$digests [$image] ?? [];
+    }
+
+    /** `Metadata.RepoDigests` ("nginx@sha256:…") → [ "sha256:…" ], sem repetir. Pura. */
+    static public function repoDigests ($json)
+    {
+        $out = [];
+
+        $list = is_object ($json) && isset ($json->Metadata) && is_object ($json->Metadata) && isset ($json->Metadata->RepoDigests) ? $json->Metadata->RepoDigests : [];
+
+        foreach (is_array ($list) ? $list : [] as $entry)
+            if (is_string ($entry) && preg_match ('/@(sha256:[0-9a-f]{64})$/', strtolower (trim ($entry)), $m))
+                $out [$m [1]] = TRUE;
+
+        return array_keys ($out);
+    }
+
+    /**
+     * `Results[].Vulnerabilities[]` → lista relatada ao core (só HIGH/CRITICAL). Pura. Para pacote de linguagem
+     * instalado (node-pkg, python-pkg, jar), o `Target` é um agregado ("Node.js", "Python", "Java") e o arquivo está no
+     * `PkgPath` da vulnerabilidade: vai em `path`, só quando existe.
+     */
+    static public function vulnerabilities ($json)
+    {
         $list = [];
 
         foreach ($json->Results as $result)
@@ -82,7 +121,7 @@ class Trivy
 
                 if (!in_array ($severity, [ 'HIGH', 'CRITICAL' ])) continue;
 
-                $list [] = [
+                $entry = [
                     'id' => (string) $v->VulnerabilityID,
                     'package' => (string) ($v->PkgName ?? ''),
                     'installed' => (string) ($v->InstalledVersion ?? ''),
@@ -93,6 +132,12 @@ class Trivy
                     'type' => (string) ($result->Type ?? ''),
                     'target' => (string) ($result->Target ?? '')
                 ];
+
+                $path = trim ((string) ($v->PkgPath ?? ''));
+
+                if ($path !== '') $entry ['path'] = $path;
+
+                $list [] = $entry;
             }
         }
 
